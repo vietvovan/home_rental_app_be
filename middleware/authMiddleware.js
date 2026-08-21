@@ -17,15 +17,18 @@ const protect = async (req, res, next) => {
         attributes: { exclude: ['passwordHash'] }
       });
 
+      if (!req.user) {
+        return res.status(401).json({ message: 'Not authorized, user not found' });
+      }
+
       next();
     } catch (error) {
-      console.error(error);
-      res.status(401).json({ message: 'Not authorized, token failed' });
+      // return để tránh gửi 2 response (double response bug)
+      return res.status(401).json({ message: 'Not authorized, token failed' });
     }
-  }
-
-  if (!token) {
-    res.status(401).json({ message: 'Not authorized, no token' });
+  } else {
+    // Không có token trong header
+    return res.status(401).json({ message: 'Not authorized, no token' });
   }
 };
 

@@ -35,7 +35,7 @@ const createUser = async (req, res) => {
       name,
       email,
       passwordHash,
-      role: role || 'Broker',
+      role: role || 'Agent',
       phone,
       isActive: isActive !== undefined ? isActive : true,
     });
@@ -66,6 +66,10 @@ const updateUser = async (req, res) => {
     if (user) {
       const { name, email, role, phone } = req.body;
       
+      if (role && role === 'Admin' && user.role !== 'Admin') {
+        return res.status(400).json({ message: 'Không thể cấp quyền Admin cho người khác. Chỉ có 1 Admin hệ thống.' });
+      }
+
       user.name = name || user.name;
       user.email = email || user.email;
       user.role = role || user.role;
@@ -116,9 +120,31 @@ const updateUserStatus = async (req, res) => {
   }
 };
 
+// @desc    Delete user
+// @route   DELETE /api/users/admin/:id
+// @access  Private/Admin
+const deleteUser = async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+
+    if (user) {
+      if (user.role === 'Admin') {
+        return res.status(400).json({ message: 'Không thể xóa tài khoản Admin.' });
+      }
+      await user.destroy();
+      res.json({ message: 'Đã xóa người dùng thành công' });
+    } else {
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getUsers,
   createUser,
   updateUser,
   updateUserStatus,
+  deleteUser,
 };

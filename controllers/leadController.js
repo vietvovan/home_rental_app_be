@@ -14,7 +14,7 @@ const createLead = async (req, res) => {
 
 // @desc    Get all leads
 // @route   GET /api/admin/leads
-// @access  Private/Admin or Manager or Broker
+// @access  Private/Admin or Manager or Agent
 const getLeads = async (req, res) => {
   try {
     const { status, assigneeId } = req.query;
@@ -23,8 +23,8 @@ const getLeads = async (req, res) => {
     if (status) where.status = status;
     if (assigneeId) where.assigneeId = assigneeId;
 
-    // Brokers can only see their assigned leads unless they are Admin/Manager
-    if (req.user.role === 'Broker' || req.user.role === 'CTV') {
+    // Agents can only see their assigned leads unless they are Admin/Manager
+    if (req.user.role === 'Agent') {
       where.assigneeId = req.user.id;
     }
 
@@ -55,7 +55,7 @@ const getLeadById = async (req, res) => {
 
     if (lead) {
       // Check if user is allowed to view
-      if ((req.user.role === 'Broker' || req.user.role === 'CTV') && lead.assigneeId !== req.user.id) {
+      if (req.user.role === 'Agent' && lead.assigneeId !== req.user.id) {
         return res.status(403).json({ message: 'Not authorized to view this lead' });
       }
       res.json(lead);
@@ -75,7 +75,7 @@ const updateLead = async (req, res) => {
     const lead = await Lead.findByPk(req.params.id);
 
     if (lead) {
-      if ((req.user.role === 'Broker' || req.user.role === 'CTV') && lead.assigneeId !== req.user.id) {
+      if (req.user.role === 'Agent' && lead.assigneeId !== req.user.id) {
         return res.status(403).json({ message: 'Not authorized to update this lead' });
       }
 
