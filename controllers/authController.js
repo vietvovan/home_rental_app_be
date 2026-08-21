@@ -31,17 +31,15 @@ const register = async (req, res) => {
       name,
       email,
       passwordHash,
-      role: role || 'Broker',
+      role: role || 'Agent',
       phone,
+      isActive: false, // Người dùng tự đăng ký mặc định là chưa kích hoạt
     });
 
     if (user) {
+      // Trả về response báo thành công nhưng không có token
       res.status(201).json({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        token: generateToken(user.id),
+        message: 'Đăng ký thành công. Tài khoản của bạn đang chờ Admin duyệt.',
       });
     } else {
       res.status(400).json({ message: 'Invalid user data' });
@@ -62,6 +60,11 @@ const login = async (req, res) => {
     const user = await User.findOne({ where: { email } });
 
     if (user && (await bcrypt.compare(password, user.passwordHash))) {
+      // Kiểm tra tài khoản đã được duyệt chưa
+      if (!user.isActive) {
+        return res.status(403).json({ message: 'Tài khoản của bạn đang chờ Admin phê duyệt.' });
+      }
+
       res.json({
         id: user.id,
         name: user.name,
@@ -70,7 +73,7 @@ const login = async (req, res) => {
         token: generateToken(user.id),
       });
     } else {
-      res.status(401).json({ message: 'Invalid email or password' });
+      res.status(401).json({ message: 'Email hoặc mật khẩu không chính xác' });
     }
   } catch (error) {
     res.status(500).json({ message: error.message });

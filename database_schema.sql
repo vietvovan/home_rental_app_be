@@ -9,7 +9,7 @@ CREATE TABLE `Users` (
   `name` VARCHAR(255) NOT NULL,
   `email` VARCHAR(255) NOT NULL UNIQUE,
   `passwordHash` VARCHAR(255) NOT NULL,
-  `role` ENUM('Admin', 'Manager', 'Broker', 'CTV') NOT NULL DEFAULT 'Broker',
+  `role` ENUM('Admin', 'Manager', 'Agent') NOT NULL DEFAULT 'Agent',
   `phone` VARCHAR(50),
   `isActive` BOOLEAN DEFAULT TRUE,
   `createdAt` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
