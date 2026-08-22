@@ -5,10 +5,10 @@ const {
   createDeposit,
   updateDepositStatus
 } = require('../controllers/depositController');
-const { protect, admin } = require('../middleware/authMiddleware');
+const { protect, adminOrManager } = require('../middleware/authMiddleware');
 
-router.get('/admin', protect, admin, getDeposits);
-router.post('/admin', protect, admin, createDeposit);
-router.put('/admin/:id/status', protect, admin, updateDepositStatus);
+router.get('/admin', protect, adminOrManager, getDeposits);
+router.post('/admin', protect, adminOrManager, createDeposit);
+router.put('/admin/:id/status', protect, adminOrManager, updateDepositStatus);
 
 module.exports = router;

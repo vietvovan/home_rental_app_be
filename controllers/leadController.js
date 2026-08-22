@@ -89,9 +89,33 @@ const updateLead = async (req, res) => {
   }
 };
 
+// @desc    Delete lead
+// @route   DELETE /api/admin/leads/:id
+// @access  Private/Admin or Manager (or Agent for their own lead)
+const deleteLead = async (req, res) => {
+  try {
+    const lead = await Lead.findByPk(req.params.id);
+
+    if (!lead) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+
+    // Check if Agent is trying to delete someone else's lead
+    if (req.user.role === 'Agent' && lead.assigneeId !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized to delete this lead' });
+    }
+
+    await lead.destroy();
+    res.json({ message: 'Lead removed' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   createLead,
   getLeads,
   getLeadById,
   updateLead,
+  deleteLead,
 };

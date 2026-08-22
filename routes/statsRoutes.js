@@ -4,9 +4,9 @@ const {
   getOverviewStats,
   getRentalTrends
 } = require('../controllers/statsController');
-const { protect, admin } = require('../middleware/authMiddleware');
+const { protect, adminOrManager } = require('../middleware/authMiddleware');
 
-router.get('/overview', protect, admin, getOverviewStats);
-router.get('/rental-trends', protect, admin, getRentalTrends);
+router.get('/overview', protect, adminOrManager, getOverviewStats);
+router.get('/rental-trends', protect, adminOrManager, getRentalTrends);
 
 module.exports = router;

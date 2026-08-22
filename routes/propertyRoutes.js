@@ -8,16 +8,16 @@ const {
   updateProperty,
   deleteProperty
 } = require('../controllers/propertyController');
-const { protect, admin } = require('../middleware/authMiddleware');
+const { protect, optionalProtect, adminOrManager } = require('../middleware/authMiddleware');
 
 // Public routes
 router.get('/', getProperties);
 router.get('/featured', getFeaturedProperties);
-router.get('/:id', getPropertyById);
+router.get('/:id', optionalProtect, getPropertyById);
 
 // Admin routes
-router.post('/admin', protect, admin, createProperty);
-router.put('/admin/:id', protect, admin, updateProperty);
-router.delete('/admin/:id', protect, admin, deleteProperty);
+router.post('/admin', protect, adminOrManager, createProperty);
+router.put('/admin/:id', protect, adminOrManager, updateProperty);
+router.delete('/admin/:id', protect, adminOrManager, deleteProperty);
 
 module.exports = router;

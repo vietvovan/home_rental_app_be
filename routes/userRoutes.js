@@ -7,9 +7,10 @@ const {
   updateUserStatus,
   deleteUser
 } = require('../controllers/userController');
-const { protect, admin } = require('../middleware/authMiddleware');
+const { protect, admin, anyStaff } = require('../middleware/authMiddleware');
 
-router.get('/admin', protect, admin, getUsers);
+// Read-only: Admin, Manager, Agent đều có thể lấy danh sách người dùng (để fill Assignee dropdown)
+router.get('/admin', protect, anyStaff, getUsers);
 router.post('/admin', protect, admin, createUser);
 router.put('/admin/:id', protect, admin, updateUser);
 router.put('/admin/:id/status', protect, admin, updateUserStatus);
