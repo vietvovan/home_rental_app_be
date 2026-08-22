@@ -28,8 +28,8 @@ const Lead = sequelize.define('Lead', {
     type: DataTypes.DATEONLY,
   },
   status: {
-    type: DataTypes.ENUM('Mới', 'Đã liên hệ', 'Đã hẹn xem', 'Đã đóng', 'Thất bại'),
-    defaultValue: 'Mới',
+    type: DataTypes.ENUM('Đã hẹn xem', 'Đã đóng', 'Thất bại', 'Viewing Scheduled', 'Closed', 'Lost', 'Mới', 'Đã liên hệ'),
+    defaultValue: 'Đã hẹn xem',
   },
   assigneeId: {
     type: DataTypes.INTEGER,

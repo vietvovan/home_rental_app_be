@@ -40,4 +40,37 @@ const admin = (req, res, next) => {
   }
 };
 
-module.exports = { protect, admin };
+const adminOrManager = (req, res, next) => {
+  if (req.user && (req.user.role === 'Admin' || req.user.role === 'Manager')) {
+    next();
+  } else {
+    res.status(403).json({ message: 'Not authorized for this action' });
+  }
+};
+
+const optionalProtect = async (req, res, next) => {
+  let token;
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    try {
+      token = req.headers.authorization.split(' ')[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = await User.findByPk(decoded.id, {
+        attributes: { exclude: ['passwordHash'] }
+      });
+    } catch (error) {
+      // Bỏ qua lỗi vì đây là optional
+    }
+  }
+  next();
+};
+
+// Tất cả các role đã đăng nhập (Admin, Manager, Agent)
+const anyStaff = (req, res, next) => {
+  if (req.user) {
+    next();
+  } else {
+    res.status(403).json({ message: 'Not authorized' });
+  }
+};
+
+module.exports = { protect, optionalProtect, admin, adminOrManager, anyStaff };

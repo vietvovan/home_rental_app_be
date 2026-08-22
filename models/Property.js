@@ -23,6 +23,11 @@ const Property = sequelize.define('Property', {
     type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
+  commission: {
+    type: DataTypes.DECIMAL(15, 2),
+    allowNull: true,
+    defaultValue: 0,
+  },
   beds: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -46,8 +51,24 @@ const Property = sequelize.define('Property', {
   image: {
     type: DataTypes.STRING(500),
   },
+  videoUrl: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  },
   amenities: {
     type: DataTypes.JSON,
+  },
+  availability: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
+  leaseTerm: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  furnishing: {
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   agentId: {
     type: DataTypes.INTEGER,

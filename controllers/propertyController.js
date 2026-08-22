@@ -66,7 +66,11 @@ const getPropertyById = async (req, res) => {
     });
 
     if (property) {
-      res.json(property);
+      const propertyData = property.toJSON();
+      if (!req.user) {
+        delete propertyData.commission;
+      }
+      res.json(propertyData);
     } else {
       res.status(404).json({ message: 'Property not found' });
     }

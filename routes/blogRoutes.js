@@ -7,15 +7,15 @@ const {
   updateBlog,
   deleteBlog
 } = require('../controllers/blogController');
-const { protect, admin } = require('../middleware/authMiddleware');
+const { protect, adminOrManager } = require('../middleware/authMiddleware');
 
 // Public routes
 router.get('/', getBlogs);
 router.get('/:id', getBlogById);
 
 // Admin routes
-router.post('/admin', protect, admin, createBlog);
-router.put('/admin/:id', protect, admin, updateBlog);
-router.delete('/admin/:id', protect, admin, deleteBlog);
+router.post('/admin', protect, adminOrManager, createBlog);
+router.put('/admin/:id', protect, adminOrManager, updateBlog);
+router.delete('/admin/:id', protect, adminOrManager, deleteBlog);
 
 module.exports = router;
