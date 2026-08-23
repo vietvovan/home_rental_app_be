@@ -36,25 +36,26 @@ const submitContact = async (req, res) => {
         notes: `[Liên hệ Giới thiệu - Chủ đề: ${cleanSubject}] ${cleanMessage}`,
       });
     } catch (leadError) {
-      console.error('⚠️ [Contact] Không thể lưu Lead vào DB:', leadError.message);
+      console.warn('⚠️ [Contact] Không thể lưu Lead vào DB:', leadError.message);
     }
 
-    // 2. Gửi email thông báo tới beehome2207@gmail.com
-    try {
-      await sendContactEmail({
-        name: cleanName,
-        phone: cleanPhone,
-        email: cleanEmail,
-        subject: cleanSubject,
-        message: cleanMessage,
-      });
-    } catch (emailError) {
-      console.error('⚠️ [Contact] Lỗi khi gửi email thông báo:', emailError.message);
-    }
-
+    // 2. Gửi phản hồi ngay lập tức cho Frontend để tránh pending / timeout
     res.status(200).json({
       success: true,
       message: 'Tin nhắn của bạn đã được gửi thành công. BEEHOME sẽ liên hệ với bạn trong thời gian sớm nhất!',
+    });
+
+    // 3. Gửi email thông báo chạy nền (Background Non-blocking)
+    sendContactEmail({
+      name: cleanName,
+      phone: cleanPhone,
+      email: cleanEmail,
+      subject: cleanSubject,
+      message: cleanMessage,
+    }).then(() => {
+      console.log('✅ [Email Service] Đã gửi email thông báo liên hệ tới beehome2207@gmail.com');
+    }).catch((emailError) => {
+      console.error('⚠️ [Email Service] Lỗi khi gửi email:', emailError.message);
     });
   } catch (error) {
     console.error('❌ [Contact Error]:', error);

@@ -2,18 +2,26 @@ const nodemailer = require('nodemailer');
 
 const createTransporter = () => {
   const user = process.env.EMAIL_USER || process.env.SMTP_USER || 'beehome2207@gmail.com';
-  const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
+  let pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
 
   if (!pass) {
     return null;
   }
 
+  // Tự động loại bỏ dấu cách nếu người dùng copy mật khẩu dạng "xxxx xxxx xxxx xxxx"
+  pass = pass.replace(/\s+/g, '').trim();
+
   return nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
     auth: {
-      user,
+      user: user.trim(),
       pass,
     },
+    connectionTimeout: 5000, // 5s timeout
+    greetingTimeout: 5000,
+    socketTimeout: 8000,
   });
 };
 
