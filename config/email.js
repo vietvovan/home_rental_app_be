@@ -20,11 +20,43 @@ const escapeHtml = (str) => {
 };
 
 /**
- * Gửi email qua HTTPS REST API của Resend (Port 443 - Chuẩn nhất trên Render Free / Vercel)
+ * Tạo Nodemailer Transporter với ép buộc IPv4 (Dành cho VPS / Local)
  */
-const sendViaResendHttp = async ({ name, phone, email, subject, message, receiverEmail }) => {
-  const resendKey = process.env.RESEND_API_KEY;
-  if (!resendKey) return false;
+const createGmailTransporter = () => {
+  const user = process.env.EMAIL_USER || process.env.SMTP_USER || 'beehome2207@gmail.com';
+  let pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
+
+  if (!pass) return null;
+  pass = pass.replace(/\s+/g, '').trim();
+
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    auth: {
+      user: user.trim(),
+      pass,
+    },
+    lookup: (hostname, options, callback) => {
+      dns.lookup(hostname, { family: 4 }, (err, address) => {
+        if (err) return callback(err);
+        callback(null, address, 4);
+      });
+    },
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 12000,
+    tls: {
+      rejectUnauthorized: false,
+    },
+  });
+};
+
+/**
+ * Hàm điều phối gửi email liên hệ (Trang Giới Thiệu & Liên Hệ)
+ */
+const sendContactEmail = async ({ name, phone, email, subject, message }) => {
+  const receiverEmail = process.env.CONTACT_RECEIVER_EMAIL || 'beehome2207@gmail.com';
 
   const safeName = escapeHtml(name);
   const safePhone = escapeHtml(phone);
@@ -33,15 +65,15 @@ const sendViaResendHttp = async ({ name, phone, email, subject, message, receive
   const safeMessage = escapeHtml(message);
   const sentTime = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 
+  const mailSubject = `[BEEHOME Liên Hệ Mới] ${safeSubject} - từ ${safeName}`;
+
   const htmlContent = `
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-      <!-- Header -->
       <div style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); padding: 28px 24px; text-align: center; border-bottom: 3px solid #0D9488;">
         <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.5px;">BEEHOME VIỆT NAM</h1>
         <p style="color: #0D9488; margin: 6px 0 0 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Yêu Cầu Liên Hệ & Tư Vấn Mới</p>
       </div>
 
-      <!-- Body -->
       <div style="padding: 28px 24px;">
         <p style="color: #334155; font-size: 14px; line-height: 1.6; margin-top: 0;">
           Hệ thống vừa ghi nhận một thông tin liên hệ mới từ khách hàng qua trang <strong>Giới thiệu & Liên hệ</strong> trên website.
@@ -88,6 +120,182 @@ const sendViaResendHttp = async ({ name, phone, email, subject, message, receive
         </div>
       </div>
 
+      <div style="background-color: #f8fafc; padding: 16px 24px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Email tự động từ Cổng thông tin BEEHOME · 168 Phúc Minh, Phú Diễn, Hà Nội</p>
+      </div>
+    </div>
+  `;
+
+  // 1. Resend HTTPS API
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY.trim()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: 'BEEHOME <onboarding@resend.dev>',
+          to: [receiverEmail],
+          reply_to: email || undefined,
+          subject: mailSubject,
+          html: htmlContent,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`✅ [Email Service] Gửi mail liên hệ thành công qua Resend tới: ${receiverEmail}`);
+        return { sent: true, method: 'resend', data };
+      }
+    } catch (resendErr) {
+      console.warn(`⚠️ [Email Service] Gửi qua Resend API gặp sự cố:`, resendErr.message);
+    }
+  }
+
+  // 2. Gmail SMTP fallback
+  const transporter = createGmailTransporter();
+  if (transporter) {
+    const info = await transporter.sendMail({
+      from: `"BEEHOME Website" <${process.env.EMAIL_USER || 'beehome2207@gmail.com'}>`,
+      to: receiverEmail,
+      replyTo: email || undefined,
+      subject: mailSubject,
+      html: htmlContent,
+    });
+    console.log(`✅ [Email Service] Gửi mail liên hệ thành công qua Gmail SMTP tới: ${receiverEmail}`);
+    return { sent: true, method: 'smtp', info };
+  }
+
+  return { sent: false, reason: 'Chưa cấu hình thông tin gửi email' };
+};
+
+/**
+ * Hàm điều phối gửi email Đặt Lịch Xem Nhà (Trang Chi Tiết Nhà)
+ */
+const sendViewingBookingEmail = async ({ name, phone, email, viewingDate, notes, property }) => {
+  const receiverEmail = process.env.CONTACT_RECEIVER_EMAIL || 'beehome2207@gmail.com';
+
+  const safeName = escapeHtml(name);
+  const safePhone = escapeHtml(phone);
+  const safeEmail = escapeHtml(email);
+  const safeDate = escapeHtml(viewingDate || 'Liên hệ hẹn thời gian sớm nhất');
+  const safeNotes = escapeHtml(notes || 'Không có ghi chú thêm');
+  const sentTime = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+  // Thông tin căn nhà
+  const propTitle = escapeHtml(property?.title || 'Bất động sản cho thuê');
+  const propId = property?.id || 'N/A';
+  const propAddress = escapeHtml(property?.address || 'Chưa cập nhật');
+  const propPrice = property?.price ? `${Number(property.price).toLocaleString('vi-VN')}₫/tháng` : 'Thương lượng';
+  const propDeposit = property?.deposit ? `${Number(property.deposit).toLocaleString('vi-VN')}₫` : 'Thương lượng';
+  const propSpecs = `${property?.type || 'Căn hộ'} · ${property?.area || 0}m² · ${property?.beds || 0} PN, ${property?.baths || 0} WC`;
+  const propStatus = escapeHtml(property?.status || 'Còn trống');
+  const propImage = property?.image || '';
+
+  const subject = `[BEEHOME Đặt Lịch Xem Nhà #${propId}] ${propTitle} - Khách: ${safeName} (${safePhone})`;
+
+  const htmlContent = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 650px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+      <!-- Header -->
+      <div style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); padding: 28px 24px; text-align: center; border-bottom: 3px solid #0D9488;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.5px;">BEEHOME VIỆT NAM</h1>
+        <p style="color: #0D9488; margin: 6px 0 0 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Yêu Cầu Đặt Lịch Xem Nhà Mới</p>
+      </div>
+
+      <div style="padding: 28px 24px;">
+        <p style="color: #334155; font-size: 14px; line-height: 1.6; margin-top: 0;">
+          Khách hàng vừa gửi yêu cầu đặt lịch hẹn xem nhà trực tiếp trên website BEEHOME:
+        </p>
+
+        <!-- Khối Thông Tin Khách Hàng -->
+        <div style="background-color: #f8fafc; border-radius: 12px; padding: 18px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+          <h3 style="color: #0F172A; font-size: 15px; margin: 0 0 12px 0;">
+            👤 THÔNG TIN KHÁCH HÀNG
+          </h3>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tbody>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b; width: 38%;">Họ và tên:</td>
+                <td style="padding: 6px 0; color: #0F172A; font-weight: 700;">${safeName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b;">Số điện thoại:</td>
+                <td style="padding: 6px 0; color: #0D9488; font-weight: 700;">
+                  <a href="tel:${safePhone}" style="color: #0D9488; text-decoration: none;">${safePhone}</a>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b;">Email:</td>
+                <td style="padding: 6px 0; color: #334155;">
+                  ${safeEmail ? `<a href="mailto:${safeEmail}" style="color: #2563eb; text-decoration: none;">${safeEmail}</a>` : '<em style="color: #94a3b8;">Không cung cấp</em>'}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b;">Ngày hẹn xem:</td>
+                <td style="padding: 6px 0; color: #b45309; font-weight: 700;">🗓️ ${safeDate}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b;">Mô tả / Ghi chú:</td>
+                <td style="padding: 6px 0; color: #334155; font-style: italic;">"${safeNotes}"</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #64748b;">Thời gian đặt:</td>
+                <td style="padding: 6px 0; color: #64748b;">${sentTime}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Khối Thông Tin Bất Động Sản -->
+        <div style="background-color: #f0fdfa; border-radius: 12px; padding: 18px; margin-bottom: 24px; border: 1px solid #ccfbf1;">
+          <h3 style="color: #0f766e; font-size: 15px; margin: 0 0 12px 0;">
+            🏠 THÔNG TIN CĂN NHÀ ĐẶT XEM (Mã #${propId})
+          </h3>
+          ${propImage ? `
+            <div style="margin-bottom: 14px; border-radius: 8px; overflow: hidden; height: 160px;">
+              <img src="${propImage}" alt="${propTitle}" style="width: 100%; height: 100%; object-fit: cover;" />
+            </div>
+          ` : ''}
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tbody>
+              <tr>
+                <td style="padding: 6px 0; color: #475569; width: 38%;">Tên căn hộ/nhà:</td>
+                <td style="padding: 6px 0; color: #0F172A; font-weight: 700;">${propTitle}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #475569;">Địa chỉ:</td>
+                <td style="padding: 6px 0; color: #334155;">${propAddress}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #475569;">Giá thuê:</td>
+                <td style="padding: 6px 0; color: #0D9488; font-weight: 700; font-size: 15px;">${propPrice}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #475569;">Tiền đặt cọc:</td>
+                <td style="padding: 6px 0; color: #0F172A; font-weight: 600;">${propDeposit}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #475569;">Thông số căn:</td>
+                <td style="padding: 6px 0; color: #334155;">${propSpecs}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #475569;">Trạng thái:</td>
+                <td style="padding: 6px 0; color: #059669; font-weight: 600;">${propStatus}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Nút gọi ngay -->
+        <div style="text-align: center;">
+          <a href="tel:${safePhone}" style="display: inline-block; background-color: #0D9488; color: #ffffff; font-weight: 600; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-size: 15px; box-shadow: 0 4px 6px -1px rgba(13, 148, 136, 0.3);">
+            📞 Gọi xác nhận lịch xem cho khách: ${safePhone}
+          </a>
+        </div>
+      </div>
+
       <!-- Footer -->
       <div style="background-color: #f8fafc; padding: 16px 24px; text-align: center; border-top: 1px solid #e2e8f0;">
         <p style="color: #94a3b8; font-size: 12px; margin: 0;">Email tự động từ Cổng thông tin BEEHOME · 168 Phúc Minh, Phú Diễn, Hà Nội</p>
@@ -95,123 +303,52 @@ const sendViaResendHttp = async ({ name, phone, email, subject, message, receive
     </div>
   `;
 
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${resendKey.trim()}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: 'BEEHOME <onboarding@resend.dev>',
-      to: [receiverEmail],
-      reply_to: email || undefined,
-      subject: `[BEEHOME Liên Hệ Mới] ${subject ? `${subject} - ` : ''}từ ${name}`,
-      html: htmlContent,
-    }),
-  });
-
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || JSON.stringify(data));
-  }
-
-  return data;
-};
-
-/**
- * Tạo Nodemailer Transporter với ép buộc IPv4 (Dành cho VPS / Local)
- */
-const createGmailTransporter = () => {
-  const user = process.env.EMAIL_USER || process.env.SMTP_USER || 'beehome2207@gmail.com';
-  let pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
-
-  if (!pass) return null;
-  pass = pass.replace(/\s+/g, '').trim();
-
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    auth: {
-      user: user.trim(),
-      pass,
-    },
-    lookup: (hostname, options, callback) => {
-      dns.lookup(hostname, { family: 4 }, (err, address) => {
-        if (err) return callback(err);
-        callback(null, address, 4);
-      });
-    },
-    connectionTimeout: 8000,
-    greetingTimeout: 8000,
-    socketTimeout: 12000,
-    tls: {
-      rejectUnauthorized: false,
-    },
-  });
-};
-
-/**
- * Hàm điều phối gửi email liên hệ chính
- */
-const sendContactEmail = async ({ name, phone, email, subject, message }) => {
-  const receiverEmail = process.env.CONTACT_RECEIVER_EMAIL || 'beehome2207@gmail.com';
-
-  // 1. Phương án ưu tiên: Resend HTTPS REST API (Hoạt động 100% trên Render Free qua Port 443)
+  // 1. Resend HTTPS API
   if (process.env.RESEND_API_KEY) {
     try {
-      const result = await sendViaResendHttp({ name, phone, email, subject, message, receiverEmail });
-      console.log(`✅ [Email Service] Gửi mail thành công qua Resend HTTPS API tới: ${receiverEmail}`);
-      return { sent: true, method: 'resend', result };
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY.trim()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: 'BEEHOME <onboarding@resend.dev>',
+          to: [receiverEmail],
+          reply_to: email || undefined,
+          subject,
+          html: htmlContent,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`✅ [Email Service] Gửi mail đặt lịch thành công qua Resend tới: ${receiverEmail}`);
+        return { sent: true, method: 'resend', data };
+      }
     } catch (resendErr) {
-      console.warn(`⚠️ [Email Service] Gửi qua Resend API gặp sự cố:`, resendErr.message);
+      console.warn(`⚠️ [Email Service] Gửi đặt lịch qua Resend API gặp sự cố:`, resendErr.message);
     }
   }
 
-  // 2. Phương án dự phòng: Gmail SMTP với ép buộc IPv4
+  // 2. Gmail SMTP fallback
   const transporter = createGmailTransporter();
-  if (!transporter) {
-    console.warn(`⚠️ [Email Service] Chưa cấu hình RESEND_API_KEY hoặc EMAIL_PASS trong .env. Tin nhắn đã được lưu vào hệ thống Leads.`);
-    return { sent: false, reason: 'Chưa cấu hình API Key hoặc mật khẩu email' };
+  if (transporter) {
+    const info = await transporter.sendMail({
+      from: `"BEEHOME Website" <${process.env.EMAIL_USER || 'beehome2207@gmail.com'}>`,
+      to: receiverEmail,
+      replyTo: email || undefined,
+      subject,
+      html: htmlContent,
+    });
+    console.log(`✅ [Email Service] Gửi mail đặt lịch thành công qua Gmail SMTP tới: ${receiverEmail}`);
+    return { sent: true, method: 'smtp', info };
   }
 
-  const safeName = escapeHtml(name);
-  const safePhone = escapeHtml(phone);
-  const safeEmail = escapeHtml(email);
-  const safeSubject = escapeHtml(subject || 'Tư vấn thuê nhà');
-  const safeMessage = escapeHtml(message);
-  const sentTime = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
-
-  const mailOptions = {
-    from: `"BEEHOME Website" <${process.env.EMAIL_USER || 'beehome2207@gmail.com'}>`,
-    to: receiverEmail,
-    replyTo: email || undefined,
-    subject: `[BEEHOME Liên Hệ Mới] ${subject ? `${subject} - ` : ''}từ ${name}`,
-    html: `
-      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0;">
-        <div style="background: #0F172A; padding: 24px; text-align: center; border-bottom: 3px solid #0D9488;">
-          <h1 style="color: #ffffff; margin: 0; font-size: 20px;">BEEHOME VIỆT NAM</h1>
-          <p style="color: #0D9488; margin: 4px 0 0 0; font-size: 13px;">Yêu Cầu Liên Hệ Mới</p>
-        </div>
-        <div style="padding: 24px;">
-          <p><strong>Khách hàng:</strong> ${safeName}</p>
-          <p><strong>Số điện thoại:</strong> <a href="tel:${safePhone}">${safePhone}</a></p>
-          <p><strong>Email:</strong> ${safeEmail || 'Không có'}</p>
-          <p><strong>Chủ đề:</strong> ${safeSubject}</p>
-          <p><strong>Thời gian:</strong> ${sentTime}</p>
-          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />
-          <p><strong>Nội dung:</strong></p>
-          <p style="white-space: pre-wrap; background: #f8fafc; padding: 12px; border-radius: 8px;">${safeMessage}</p>
-        </div>
-      </div>
-    `,
-  };
-
-  const info = await transporter.sendMail(mailOptions);
-  console.log(`✅ [Email Service] Gửi mail thành công qua Gmail SMTP tới: ${receiverEmail}`);
-  return { sent: true, method: 'smtp', info };
+  return { sent: false, reason: 'Chưa cấu hình thông tin gửi email' };
 };
 
 module.exports = {
   sendContactEmail,
+  sendViewingBookingEmail,
 };

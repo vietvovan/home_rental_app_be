@@ -1,5 +1,5 @@
 const { Lead } = require('../models');
-const { sendContactEmail } = require('../config/email');
+const { sendContactEmail, sendViewingBookingEmail } = require('../config/email');
 
 // @desc    Submit contact inquiry and send notification email to beehome2207@gmail.com
 // @route   POST /api/contact
@@ -63,6 +63,67 @@ const submitContact = async (req, res) => {
   }
 };
 
+// @desc    Submit property viewing booking request and send notification email to beehome2207@gmail.com
+// @route   POST /api/contact/booking
+// @access  Public
+const submitBooking = async (req, res) => {
+  try {
+    const { name, phone, email, viewingDate, notes, property } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Vui lòng nhập họ và tên của bạn.' });
+    }
+
+    if (!phone || !phone.trim()) {
+      return res.status(400).json({ message: 'Vui lòng nhập số điện thoại để BEEHOME liên hệ xác nhận lịch xem.' });
+    }
+
+    const cleanName = name.trim();
+    const cleanPhone = phone.trim();
+    const cleanEmail = email ? email.trim() : '';
+    const cleanViewingDate = viewingDate ? viewingDate.trim() : '';
+    const cleanNotes = notes ? notes.trim() : '';
+
+    // 1. Lưu khách hàng tiềm năng vào hệ thống Leads
+    try {
+      await Lead.create({
+        name: cleanName,
+        phone: cleanPhone,
+        email: cleanEmail || `${cleanPhone}@datlich.beehome.vn`,
+        moveInDate: cleanViewingDate || null,
+        status: 'Đã hẹn xem',
+        notes: `[Đặt lịch xem căn #${property?.id || 'N/A'} - ${property?.title || 'BĐS'}] Ngày xem: ${cleanViewingDate || 'Sớm nhất'} | Ghi chú: ${cleanNotes || 'Không có'}`,
+      });
+    } catch (leadError) {
+      console.warn('⚠️ [Booking] Không thể lưu Lead vào DB:', leadError.message);
+    }
+
+    // 2. Gửi phản hồi ngay lập tức cho Frontend
+    res.status(200).json({
+      success: true,
+      message: 'Yêu cầu đặt lịch xem nhà đã được gửi thành công. Đội ngũ BEEHOME sẽ liên hệ xác nhận trong vòng 2 giờ!',
+    });
+
+    // 3. Gửi email thông báo chạy nền (Background Non-blocking)
+    sendViewingBookingEmail({
+      name: cleanName,
+      phone: cleanPhone,
+      email: cleanEmail,
+      viewingDate: cleanViewingDate,
+      notes: cleanNotes,
+      property,
+    }).then(() => {
+      console.log(`✅ [Email Service] Đã gửi email đặt lịch xem căn #${property?.id} tới beehome2207@gmail.com`);
+    }).catch((emailError) => {
+      console.error('⚠️ [Email Service] Lỗi khi gửi email đặt lịch:', emailError.message);
+    });
+  } catch (error) {
+    console.error('❌ [Booking Error]:', error);
+    res.status(500).json({ message: 'Đã có lỗi xảy ra khi đặt lịch xem nhà. Vui lòng thử lại sau.' });
+  }
+};
+
 module.exports = {
   submitContact,
+  submitBooking,
 };
