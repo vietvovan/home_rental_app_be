@@ -126,6 +126,18 @@ const sendContactEmail = async ({ name, phone, email, subject, message }) => {
     </div>
   `;
 
+  const plainText = `[BEEHOME Liên Hệ Mới]
+Họ và tên: ${safeName}
+Số điện thoại: ${safePhone}
+Email: ${safeEmail || 'Không cung cấp'}
+Chủ đề: ${safeSubject}
+Thời gian: ${sentTime}
+Nội dung tin nhắn:
+${safeMessage}
+`;
+
+  const senderEmail = process.env.RESEND_FROM_EMAIL || 'BEEHOME <onboarding@resend.dev>';
+
   // 1. Resend HTTPS API
   if (process.env.RESEND_API_KEY) {
     try {
@@ -136,11 +148,12 @@ const sendContactEmail = async ({ name, phone, email, subject, message }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: 'BEEHOME <onboarding@resend.dev>',
+          from: senderEmail,
           to: [receiverEmail],
           reply_to: email || undefined,
           subject: mailSubject,
           html: htmlContent,
+          text: plainText,
         }),
       });
 
@@ -303,6 +316,23 @@ const sendViewingBookingEmail = async ({ name, phone, email, viewingDate, notes,
     </div>
   `;
 
+  const plainText = `[BEEHOME Đặt Lịch Xem Nhà #${propId}]
+Bất động sản: ${propTitle}
+Địa chỉ: ${propAddress}
+Giá thuê: ${propPrice} | Tiền cọc: ${propDeposit}
+Thông tin BĐS: ${propSpecs}
+
+THÔNG TIN KHÁCH HÀNG:
+Họ và tên: ${safeName}
+Số điện thoại: ${safePhone}
+Email: ${safeEmail || 'Không cung cấp'}
+Ngày hẹn xem: ${safeDate}
+Ghi chú: ${safeNotes}
+Thời gian gửi: ${sentTime}
+`;
+
+  const senderEmail = process.env.RESEND_FROM_EMAIL || 'BEEHOME <onboarding@resend.dev>';
+
   // 1. Resend HTTPS API
   if (process.env.RESEND_API_KEY) {
     try {
@@ -313,11 +343,12 @@ const sendViewingBookingEmail = async ({ name, phone, email, viewingDate, notes,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: 'BEEHOME <onboarding@resend.dev>',
+          from: senderEmail,
           to: [receiverEmail],
           reply_to: email || undefined,
           subject,
           html: htmlContent,
+          text: plainText,
         }),
       });
 
