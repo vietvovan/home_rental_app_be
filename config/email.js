@@ -13,15 +13,19 @@ const createTransporter = () => {
 
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
+    port: 587,
+    secure: false, // 587 dùng STARTTLS, tương thích tốt nhất với mạng cloud của Render
+    family: 4,     // BẮT BUỘC: Ép buộc dùng IPv4, khắc phục triệt để lỗi ENETUNREACH (IPv6) trên Render
     auth: {
       user: user.trim(),
       pass,
     },
-    connectionTimeout: 5000, // 5s timeout
-    greetingTimeout: 5000,
-    socketTimeout: 8000,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    tls: {
+      rejectUnauthorized: false,
+    },
   });
 };
 
