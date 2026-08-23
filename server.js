@@ -14,12 +14,17 @@ const app = express();
 // Cấu hình CORS
 const isDev = (process.env.NODE_ENV || 'development') === 'development';
 
+// Hỗ trợ nhiều domain: FRONTEND_URLS="https://a.com,https://b.com" hoặc FRONTEND_URL="https://a.com"
+const extraOrigins = process.env.FRONTEND_URLS
+  ? process.env.FRONTEND_URLS.split(',').map(s => s.trim()).filter(Boolean)
+  : [];
+
 const allowedOrigins = [
-  'http://localhost:5173',   // Vite dev
-  'http://localhost:4173',   // Vite preview
-  'http://localhost:3000',   // CRA fallback
-  'http://localhost:8443',   // Vite custom port
-  process.env.FRONTEND_URL, // Production URL từ .env
+  'http://localhost:5173',    // Vite dev
+  'http://localhost:4173',    // Vite preview
+  'http://localhost:3000',    // CRA fallback
+  process.env.FRONTEND_URL,  // Domain chính (Vercel hoặc custom domain)
+  ...extraOrigins,            // Các domain bổ sung (ví dụ: cả Vercel lẫn domain Mắt Bão)
 ].filter(Boolean);
 
 app.use(cors({
