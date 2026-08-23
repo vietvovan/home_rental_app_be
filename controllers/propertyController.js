@@ -1,5 +1,6 @@
 const { Property, User } = require('../models');
 const { Op } = require('sequelize');
+const { deleteFromCloudinary } = require('../config/cloudinary');
 
 // @desc    Get all properties
 // @route   GET /api/properties
@@ -8,7 +9,6 @@ const getProperties = async (req, res) => {
   try {
     const { status, type, minPrice, maxPrice, featured } = req.query;
     
-    // Xây dựng query filter
     const where = {};
     if (status) where.status = status;
     if (type) where.type = type;
@@ -30,9 +30,7 @@ const getProperties = async (req, res) => {
 
     const safeProperties = properties.map(p => {
       const data = p.toJSON();
-      if (!req.user) {
-        delete data.commission;
-      }
+      if (!req.user) delete data.commission;
       return data;
     });
 
@@ -58,9 +56,7 @@ const getFeaturedProperties = async (req, res) => {
 
     const safeProperties = properties.map(p => {
       const data = p.toJSON();
-      if (!req.user) {
-        delete data.commission;
-      }
+      if (!req.user) delete data.commission;
       return data;
     });
 
@@ -83,9 +79,7 @@ const getPropertyById = async (req, res) => {
 
     if (property) {
       const propertyData = property.toJSON();
-      if (!req.user) {
-        delete propertyData.commission;
-      }
+      if (!req.user) delete propertyData.commission;
       res.json(propertyData);
     } else {
       res.status(404).json({ message: 'Property not found' });
@@ -95,8 +89,30 @@ const getPropertyById = async (req, res) => {
   }
 };
 
+// @desc    Upload images to Cloudinary
+// @route   POST /api/properties/upload-images
+// @access  Private/Admin
+const uploadPropertyImages = async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: 'Vui lòng chọn ít nhất 1 ảnh' });
+    }
+
+    // Lấy danh sách URL ảnh đã được upload lên Cloudinary bởi multer-storage-cloudinary
+    const imageUrls = req.files.map(file => file.path);
+
+    res.json({
+      success: true,
+      urls: imageUrls,
+      count: imageUrls.length,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // @desc    Create new property
-// @route   POST /api/admin/properties
+// @route   POST /api/properties/admin
 // @access  Private/Admin
 const createProperty = async (req, res) => {
   try {
@@ -108,13 +124,17 @@ const createProperty = async (req, res) => {
 };
 
 // @desc    Update property
-// @route   PUT /api/admin/properties/:id
+// @route   PUT /api/properties/admin/:id
 // @access  Private/Admin
 const updateProperty = async (req, res) => {
   try {
     const property = await Property.findByPk(req.params.id);
 
     if (property) {
+      // Nếu ảnh bìa được thay thế → xóa ảnh cũ trên Cloudinary
+      if (req.body.image && req.body.image !== property.image) {
+        await deleteFromCloudinary(property.image);
+      }
       const updatedProperty = await property.update(req.body);
       res.json(updatedProperty);
     } else {
@@ -126,13 +146,15 @@ const updateProperty = async (req, res) => {
 };
 
 // @desc    Delete property
-// @route   DELETE /api/admin/properties/:id
+// @route   DELETE /api/properties/admin/:id
 // @access  Private/Admin
 const deleteProperty = async (req, res) => {
   try {
     const property = await Property.findByPk(req.params.id);
 
     if (property) {
+      // Xóa ảnh trên Cloudinary trước khi xóa record
+      await deleteFromCloudinary(property.image);
       await property.destroy();
       res.json({ message: 'Property removed' });
     } else {
@@ -147,6 +169,7 @@ module.exports = {
   getProperties,
   getFeaturedProperties,
   getPropertyById,
+  uploadPropertyImages,
   createProperty,
   updateProperty,
   deleteProperty,

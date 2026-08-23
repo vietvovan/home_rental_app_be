@@ -4,10 +4,12 @@ const {
   getProperties,
   getFeaturedProperties,
   getPropertyById,
+  uploadPropertyImages,
   createProperty,
   updateProperty,
   deleteProperty
 } = require('../controllers/propertyController');
+const { uploadProperty } = require('../config/cloudinary');
 const { protect, optionalProtect, adminOrManager } = require('../middlewares/authMiddleware');
 
 // Public routes
@@ -16,6 +18,8 @@ router.get('/featured', optionalProtect, getFeaturedProperties);
 router.get('/:id', optionalProtect, getPropertyById);
 
 // Admin routes
+// Upload tối đa 20 ảnh cùng lúc lên Cloudinary
+router.post('/upload-images', protect, adminOrManager, uploadProperty.array('images', 20), uploadPropertyImages);
 router.post('/admin', protect, adminOrManager, createProperty);
 router.put('/admin/:id', protect, adminOrManager, updateProperty);
 router.delete('/admin/:id', protect, adminOrManager, deleteProperty);
