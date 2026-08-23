@@ -4,7 +4,7 @@ const {
   getOverviewStats,
   getRentalTrends
 } = require('../controllers/statsController');
-const { protect, adminOrManager } = require('../middleware/authMiddleware');
+const { protect, adminOrManager } = require('../middlewares/authMiddleware');
 
 router.get('/overview', protect, adminOrManager, getOverviewStats);
 router.get('/rental-trends', protect, adminOrManager, getRentalTrends);

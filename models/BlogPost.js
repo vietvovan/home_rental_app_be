@@ -42,6 +42,12 @@ const BlogPost = sequelize.define('BlogPost', {
 }, {
   tableName: 'BlogPosts',
   timestamps: true,
+  indexes: [
+    { fields: ['isFeatured'] },
+    { fields: ['category'] },
+    { fields: ['authorId'] },
+    { fields: ['publishedAt'] },
+  ],
 });
 
 module.exports = BlogPost;

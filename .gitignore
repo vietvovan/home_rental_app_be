@@ -1,21 +1,51 @@
+# Dependencies
 node_modules/
+.pnp
+.pnp.js
+
+# Environment files (KHÔNG đẩy file chứa secret/password DB lên GitHub)
 .env
 .env.*
 !.env.example
+
+# Logs
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .pnpm-debug.log*
 
-# logs
-logs
-*.log
-
-# coverage
+# Coverage / Testing
 coverage/
 .nyc_output/
 
-# dist
+# Build & Dist
 dist/
 build/
+
+# Uploads & Temporary files
+uploads/
+temp/
+tmp/
+
+# IDE & Code Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS Generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini

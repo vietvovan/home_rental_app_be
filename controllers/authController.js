@@ -14,26 +14,35 @@ const generateToken = (id) => {
 // @access  Public
 const register = async (req, res) => {
   try {
-    const { name, email, password, role, phone } = req.body;
+    const { name, email, password, phone, address } = req.body;
+
+    if (!name || !email || !password || !phone || !address) {
+      return res.status(400).json({ message: 'Vui lòng nhập đầy đủ họ tên, email, mật khẩu, số điện thoại và địa chỉ.' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Mật khẩu phải có tối thiểu 6 ký tự.' });
+    }
 
     // Check if user exists
-    const userExists = await User.findOne({ where: { email } });
+    const userExists = await User.findOne({ where: { email: email.trim().toLowerCase() } });
     if (userExists) {
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(400).json({ message: 'Email này đã tồn tại trong hệ thống.' });
     }
 
     // Hash password
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Create user
+    // Create user - Always force role to Agent to prevent Privilege Escalation
     const user = await User.create({
-      name,
-      email,
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
       passwordHash,
-      role: role || 'Agent',
-      phone,
-      isActive: false, // Người dùng tự đăng ký mặc định là chưa kích hoạt
+      role: 'Agent',
+      phone: phone.trim(),
+      address: address.trim(),
+      isActive: false, // Người dùng tự đăng ký mặc định là chưa kích hoạt (chờ Admin duyệt)
     });
 
     if (user) {

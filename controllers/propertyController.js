@@ -28,7 +28,15 @@ const getProperties = async (req, res) => {
       order: [['createdAt', 'DESC']]
     });
 
-    res.json(properties);
+    const safeProperties = properties.map(p => {
+      const data = p.toJSON();
+      if (!req.user) {
+        delete data.commission;
+      }
+      return data;
+    });
+
+    res.json(safeProperties);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -48,7 +56,15 @@ const getFeaturedProperties = async (req, res) => {
       order: [['createdAt', 'DESC']]
     });
 
-    res.json(properties);
+    const safeProperties = properties.map(p => {
+      const data = p.toJSON();
+      if (!req.user) {
+        delete data.commission;
+      }
+      return data;
+    });
+
+    res.json(safeProperties);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

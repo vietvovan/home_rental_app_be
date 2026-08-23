@@ -7,7 +7,7 @@ const {
   updateBlog,
   deleteBlog
 } = require('../controllers/blogController');
-const { protect, adminOrManager } = require('../middleware/authMiddleware');
+const { protect, adminOrManager } = require('../middlewares/authMiddleware');
 
 // Public routes
 router.get('/', getBlogs);

@@ -35,7 +35,17 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json());
+const compression = require('compression');
+app.use(compression());
+app.use(express.json({ limit: '10mb' }));
+
+// Global Security & Anti-Malware Sanitizer Middleware
+const securitySanitizer = require('./middlewares/securitySanitizer');
+app.use(securitySanitizer);
+
+// Rate Limiting & Anti-Spam Middlewares
+const { globalLimiter, authLimiter, writeActionLimiter } = require('./middlewares/rateLimiter');
+app.use('/api', globalLimiter);
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
@@ -46,11 +56,11 @@ const depositRoutes = require('./routes/depositRoutes');
 const blogRoutes = require('./routes/blogRoutes');
 const statsRoutes = require('./routes/statsRoutes');
 
-app.use('/api/auth', authRoutes);
-app.use('/api/properties', propertyRoutes);
-app.use('/api/leads', leadRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/deposits', depositRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/properties', writeActionLimiter, propertyRoutes);
+app.use('/api/leads', writeActionLimiter, leadRoutes);
+app.use('/api/users', writeActionLimiter, userRoutes);
+app.use('/api/deposits', writeActionLimiter, depositRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/stats', statsRoutes);
 

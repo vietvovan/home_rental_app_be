@@ -8,11 +8,11 @@ const {
   updateProperty,
   deleteProperty
 } = require('../controllers/propertyController');
-const { protect, optionalProtect, adminOrManager } = require('../middleware/authMiddleware');
+const { protect, optionalProtect, adminOrManager } = require('../middlewares/authMiddleware');
 
 // Public routes
-router.get('/', getProperties);
-router.get('/featured', getFeaturedProperties);
+router.get('/', optionalProtect, getProperties);
+router.get('/featured', optionalProtect, getFeaturedProperties);
 router.get('/:id', optionalProtect, getPropertyById);
 
 // Admin routes
