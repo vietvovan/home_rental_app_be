@@ -5,7 +5,7 @@ const { Lead, User } = require('../models');
 // @access  Public
 const createLead = async (req, res) => {
   try {
-    const { name, email, phone, budget, area, moveInDate, notes } = req.body;
+    const { name, email, phone, budget, area, moveInDate, notes, nationality, occupation, leaseTerm, scheduledViewings, status, assigneeId } = req.body;
 
     if (!name || (!email && !phone)) {
       return res.status(400).json({ message: 'Vui lòng cung cấp họ tên và số điện thoại hoặc email liên hệ.' });
@@ -15,12 +15,16 @@ const createLead = async (req, res) => {
       name: name ? String(name).trim() : '',
       email: email ? String(email).trim().toLowerCase() : '',
       phone: phone ? String(phone).trim() : '',
+      nationality: nationality ? String(nationality).trim() : null,
+      occupation: occupation ? String(occupation).trim() : null,
+      leaseTerm: leaseTerm ? String(leaseTerm).trim() : '12',
       budget: Number(budget) || null,
       area: area ? String(area).trim() : null,
       moveInDate: moveInDate || null,
+      scheduledViewings: typeof scheduledViewings === 'string' ? scheduledViewings : JSON.stringify(scheduledViewings || []),
       notes: typeof notes === 'string' ? notes : JSON.stringify(notes || []),
-      status: 'Đã hẹn xem',
-      assigneeId: null, // Public leads are unassigned until staff assigns them
+      status: status || 'Đã hẹn xem',
+      assigneeId: assigneeId || null,
     });
 
     res.status(201).json(lead);

@@ -86,12 +86,30 @@ const submitBooking = async (req, res) => {
 
     // 1. Lưu khách hàng tiềm năng vào hệ thống Leads
     try {
+      const scheduledList = property ? [{
+        property: {
+          id: property.id,
+          title: property.title || 'BĐS',
+          address: property.address || '',
+          price: property.price || 0,
+          image: (Array.isArray(property.images) ? property.images[0] : property.images) || property.image || '',
+          bedrooms: property.bedrooms || 1,
+          bathrooms: property.bathrooms || 1,
+          area: property.area || '',
+        },
+        date: cleanViewingDate || new Date().toISOString().split('T')[0],
+        time: '09:00',
+      }] : [];
+
       await Lead.create({
         name: cleanName,
         phone: cleanPhone,
         email: cleanEmail || `${cleanPhone}@datlich.beehome.vn`,
+        budget: property?.price ? Number(property.price) : null,
+        area: property?.address || null,
         moveInDate: cleanViewingDate || null,
         status: 'Đã hẹn xem',
+        scheduledViewings: JSON.stringify(scheduledList),
         notes: `[Đặt lịch xem căn #${property?.id || 'N/A'} - ${property?.title || 'BĐS'}] Ngày xem: ${cleanViewingDate || 'Sớm nhất'} | Ghi chú: ${cleanNotes || 'Không có'}`,
       });
     } catch (leadError) {

@@ -18,6 +18,19 @@ const Lead = sequelize.define('Lead', {
   phone: {
     type: DataTypes.STRING,
   },
+  nationality: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  occupation: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  leaseTerm: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: '12',
+  },
   budget: {
     type: DataTypes.DECIMAL(15, 2),
   },
@@ -26,6 +39,10 @@ const Lead = sequelize.define('Lead', {
   },
   moveInDate: {
     type: DataTypes.DATEONLY,
+  },
+  scheduledViewings: {
+    type: DataTypes.TEXT,
+    allowNull: true,
   },
   status: {
     type: DataTypes.ENUM('Đã hẹn xem', 'Đã đóng', 'Thất bại', 'Viewing Scheduled', 'Closed', 'Lost', 'Mới', 'Đã liên hệ'),

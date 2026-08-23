@@ -49,7 +49,7 @@ const securitySanitizer = require('./middlewares/securitySanitizer');
 app.use(securitySanitizer);
 
 // Rate Limiting & Anti-Spam Middlewares
-const { globalLimiter, authLimiter, writeActionLimiter } = require('./middlewares/rateLimiter');
+const { globalLimiter, authLimiter } = require('./middlewares/rateLimiter');
 app.use('/api', globalLimiter);
 
 // Routes
@@ -63,13 +63,13 @@ const statsRoutes = require('./routes/statsRoutes');
 const contactRoutes = require('./routes/contactRoutes');
 
 app.use('/api/auth', authLimiter, authRoutes);
-app.use('/api/properties', writeActionLimiter, propertyRoutes);
-app.use('/api/leads', writeActionLimiter, leadRoutes);
-app.use('/api/users', writeActionLimiter, userRoutes);
-app.use('/api/deposits', writeActionLimiter, depositRoutes);
+app.use('/api/properties', propertyRoutes);
+app.use('/api/leads', leadRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/deposits', depositRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/stats', statsRoutes);
-app.use('/api/contact', writeActionLimiter, contactRoutes);
+app.use('/api/contact', contactRoutes);
 
 // Health check endpoint
 app.get('/', (req, res) => {
