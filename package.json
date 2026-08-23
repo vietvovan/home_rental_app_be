@@ -19,6 +19,7 @@
     "multer": "^2.2.0",
     "multer-storage-cloudinary": "^4.0.0",
     "mysql2": "^3.10.3",
+    "nodemailer": "^9.0.5",
     "sequelize": "^6.37.3"
   }
 }
