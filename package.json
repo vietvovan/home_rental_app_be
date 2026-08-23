@@ -6,10 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "dev:clean": "npx kill-port 5000 && node server.js",
-    "create-db": "node create-db.js",
-    "seed": "node seed-all-data.js",
-    "test-api": "node test-api.js"
+    "dev:clean": "npx kill-port 5000 && node server.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
