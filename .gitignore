@@ -6,7 +6,6 @@ node_modules/
 # Environment files (KHÔNG đẩy file chứa secret/password DB lên GitHub)
 .env
 .env.*
-!.env.example
 
 # Logs
 logs/

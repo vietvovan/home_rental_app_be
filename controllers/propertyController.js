@@ -46,7 +46,7 @@ const getProperties = async (req, res) => {
 const getFeaturedProperties = async (req, res) => {
   try {
     const properties = await Property.findAll({
-      where: { isFeatured: true },
+      where: { isFeatured: true, status: 'Còn trống' },
       include: [
         { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone'] }
       ],
