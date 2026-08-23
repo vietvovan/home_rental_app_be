@@ -5,7 +5,7 @@ const {
   createDeposit,
   updateDepositStatus
 } = require('../controllers/depositController');
-const { protect, adminOrManager } = require('../middleware/authMiddleware');
+const { protect, adminOrManager } = require('../middlewares/authMiddleware');
 
 router.get('/admin', protect, adminOrManager, getDeposits);
 router.post('/admin', protect, adminOrManager, createDeposit);

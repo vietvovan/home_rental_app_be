@@ -5,7 +5,24 @@ const { Lead, User } = require('../models');
 // @access  Public
 const createLead = async (req, res) => {
   try {
-    const lead = await Lead.create(req.body);
+    const { name, email, phone, budget, area, moveInDate, notes } = req.body;
+
+    if (!name || (!email && !phone)) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp họ tên và số điện thoại hoặc email liên hệ.' });
+    }
+
+    const lead = await Lead.create({
+      name: name ? String(name).trim() : '',
+      email: email ? String(email).trim().toLowerCase() : '',
+      phone: phone ? String(phone).trim() : '',
+      budget: Number(budget) || null,
+      area: area ? String(area).trim() : null,
+      moveInDate: moveInDate || null,
+      notes: typeof notes === 'string' ? notes : JSON.stringify(notes || []),
+      status: 'Đã hẹn xem',
+      assigneeId: null, // Public leads are unassigned until staff assigns them
+    });
+
     res.status(201).json(lead);
   } catch (error) {
     res.status(500).json({ message: error.message });

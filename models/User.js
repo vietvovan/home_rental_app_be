@@ -28,6 +28,9 @@ const User = sequelize.define('User', {
   phone: {
     type: DataTypes.STRING,
   },
+  address: {
+    type: DataTypes.STRING,
+  },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
@@ -35,6 +38,11 @@ const User = sequelize.define('User', {
 }, {
   tableName: 'Users',
   timestamps: true,
+  indexes: [
+    { fields: ['email'], unique: true },
+    { fields: ['role'] },
+    { fields: ['isActive'] },
+  ],
 });
 
 module.exports = User;

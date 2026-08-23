@@ -14,12 +14,17 @@ const app = express();
 // Cấu hình CORS
 const isDev = (process.env.NODE_ENV || 'development') === 'development';
 
+// Hỗ trợ nhiều domain: FRONTEND_URLS="https://a.com,https://b.com" hoặc FRONTEND_URL="https://a.com"
+const extraOrigins = process.env.FRONTEND_URLS
+  ? process.env.FRONTEND_URLS.split(',').map(s => s.trim()).filter(Boolean)
+  : [];
+
 const allowedOrigins = [
-  'http://localhost:5173',   // Vite dev
-  'http://localhost:4173',   // Vite preview
-  'http://localhost:3000',   // CRA fallback
-  'http://localhost:8443',   // Vite custom port
-  process.env.FRONTEND_URL, // Production URL từ .env
+  'http://localhost:5173',    // Vite dev
+  'http://localhost:4173',    // Vite preview
+  'http://localhost:3000',    // CRA fallback
+  process.env.FRONTEND_URL,  // Domain chính (Vercel hoặc custom domain)
+  ...extraOrigins,            // Các domain bổ sung (ví dụ: cả Vercel lẫn domain Mắt Bão)
 ].filter(Boolean);
 
 app.use(cors({
@@ -35,7 +40,17 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json());
+const compression = require('compression');
+app.use(compression());
+app.use(express.json({ limit: '10mb' }));
+
+// Global Security & Anti-Malware Sanitizer Middleware
+const securitySanitizer = require('./middlewares/securitySanitizer');
+app.use(securitySanitizer);
+
+// Rate Limiting & Anti-Spam Middlewares
+const { globalLimiter, authLimiter, writeActionLimiter } = require('./middlewares/rateLimiter');
+app.use('/api', globalLimiter);
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
@@ -46,11 +61,11 @@ const depositRoutes = require('./routes/depositRoutes');
 const blogRoutes = require('./routes/blogRoutes');
 const statsRoutes = require('./routes/statsRoutes');
 
-app.use('/api/auth', authRoutes);
-app.use('/api/properties', propertyRoutes);
-app.use('/api/leads', leadRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/deposits', depositRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/properties', writeActionLimiter, propertyRoutes);
+app.use('/api/leads', writeActionLimiter, leadRoutes);
+app.use('/api/users', writeActionLimiter, userRoutes);
+app.use('/api/deposits', writeActionLimiter, depositRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/stats', statsRoutes);
 

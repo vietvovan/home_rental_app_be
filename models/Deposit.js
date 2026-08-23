@@ -35,6 +35,12 @@ const Deposit = sequelize.define('Deposit', {
 }, {
   tableName: 'Deposits',
   timestamps: true,
+  indexes: [
+    { fields: ['contractNumber'], unique: true },
+    { fields: ['status'] },
+    { fields: ['propertyId'] },
+    { fields: ['depositDate'] },
+  ],
 });
 
 module.exports = Deposit;

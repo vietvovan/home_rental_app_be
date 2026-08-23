@@ -6,7 +6,7 @@ const {
   getLeadById,
   updateLead
 } = require('../controllers/leadController');
-const { protect, anyStaff } = require('../middleware/authMiddleware');
+const { protect, anyStaff } = require('../middlewares/authMiddleware');
 
 // Public route for form submission
 router.post('/', createLead);

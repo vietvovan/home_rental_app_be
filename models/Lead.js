@@ -41,6 +41,12 @@ const Lead = sequelize.define('Lead', {
 }, {
   tableName: 'Leads',
   timestamps: true,
+  indexes: [
+    { fields: ['status'] },
+    { fields: ['assigneeId'] },
+    { fields: ['email'] },
+    { fields: ['createdAt'] },
+  ],
 });
 
 module.exports = Lead;

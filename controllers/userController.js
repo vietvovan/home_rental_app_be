@@ -21,22 +21,23 @@ const getUsers = async (req, res) => {
 // @access  Private/Admin
 const createUser = async (req, res) => {
   try {
-    const { name, email, password, role, phone, isActive } = req.body;
+    const { name, email, password, role, phone, address, isActive } = req.body;
 
-    const userExists = await User.findOne({ where: { email } });
+    const userExists = await User.findOne({ where: { email: email.trim().toLowerCase() } });
     if (userExists) {
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(400).json({ message: 'Email người dùng đã tồn tại' });
     }
 
     const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
+    const passwordHash = await bcrypt.hash(password || 'User@123456', salt);
 
     const user = await User.create({
-      name,
-      email,
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
       passwordHash,
       role: role || 'Agent',
-      phone,
+      phone: phone ? phone.trim() : null,
+      address: address ? address.trim() : null,
       isActive: isActive !== undefined ? isActive : true,
     });
 
@@ -46,10 +47,12 @@ const createUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        phone: user.phone,
+        address: user.address,
         isActive: user.isActive
       });
     } else {
-      res.status(400).json({ message: 'Invalid user data' });
+      res.status(400).json({ message: 'Dữ liệu không hợp lệ' });
     }
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -64,16 +67,17 @@ const updateUser = async (req, res) => {
     const user = await User.findByPk(req.params.id);
 
     if (user) {
-      const { name, email, role, phone } = req.body;
+      const { name, email, role, phone, address } = req.body;
       
       if (role && role === 'Admin' && user.role !== 'Admin') {
         return res.status(400).json({ message: 'Không thể cấp quyền Admin cho người khác. Chỉ có 1 Admin hệ thống.' });
       }
 
-      user.name = name || user.name;
-      user.email = email || user.email;
+      user.name = name ? name.trim() : user.name;
+      user.email = email ? email.trim().toLowerCase() : user.email;
       user.role = role || user.role;
-      user.phone = phone || user.phone;
+      user.phone = phone !== undefined ? phone : user.phone;
+      user.address = address !== undefined ? address : user.address;
 
       if (req.body.password) {
         const salt = await bcrypt.genSalt(10);
@@ -87,10 +91,11 @@ const updateUser = async (req, res) => {
         email: updatedUser.email,
         role: updatedUser.role,
         phone: updatedUser.phone,
+        address: updatedUser.address,
         isActive: updatedUser.isActive
       });
     } else {
-      res.status(404).json({ message: 'User not found' });
+      res.status(404).json({ message: 'Không tìm thấy người dùng' });
     }
   } catch (error) {
     res.status(500).json({ message: error.message });
