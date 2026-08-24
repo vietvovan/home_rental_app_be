@@ -1,4 +1,5 @@
 const { BlogPost, User } = require('../models');
+const { Op } = require('sequelize');
 const { deleteFromCloudinary } = require('../config/cloudinary');
 
 // @desc    Get all blog posts
@@ -6,12 +7,50 @@ const { deleteFromCloudinary } = require('../config/cloudinary');
 // @access  Public
 const getBlogs = async (req, res) => {
   try {
-    const blogs = await BlogPost.findAll({
+    const { category, search, page, limit } = req.query;
+
+    const where = {};
+    if (category && category !== 'Tất cả') {
+      where.category = category;
+    }
+
+    if (search) {
+      where[Op.or] = [
+        { title: { [Op.like]: `%${search}%` } },
+        { excerpt: { [Op.like]: `%${search}%` } },
+        { category: { [Op.like]: `%${search}%` } }
+      ];
+    }
+
+    const queryOptions = {
+      where,
       include: [
         { model: User, as: 'author', attributes: ['id', 'name'] }
       ],
       order: [['publishedAt', 'DESC']]
-    });
+    };
+
+    if (page && limit) {
+      const pageNum = parseInt(page, 10) || 1;
+      const limitNum = parseInt(limit, 10) || 10;
+      const offset = (pageNum - 1) * limitNum;
+
+      const { count, rows } = await BlogPost.findAndCountAll({
+        ...queryOptions,
+        limit: limitNum,
+        offset,
+        distinct: true
+      });
+
+      return res.json({
+        total: count,
+        totalPages: Math.ceil(count / limitNum),
+        currentPage: pageNum,
+        data: rows
+      });
+    }
+
+    const blogs = await BlogPost.findAll(queryOptions);
     res.json(blogs);
   } catch (error) {
     res.status(500).json({ message: error.message });

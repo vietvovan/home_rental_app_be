@@ -7,7 +7,7 @@ const { deleteFromCloudinary } = require('../config/cloudinary');
 // @access  Public
 const getProperties = async (req, res) => {
   try {
-    const { status, type, minPrice, maxPrice, featured } = req.query;
+    const { status, type, minPrice, maxPrice, featured, search, page, limit } = req.query;
     
     const where = {};
     if (status) where.status = status;
@@ -20,13 +20,50 @@ const getProperties = async (req, res) => {
       if (maxPrice) where.price[Op.lte] = maxPrice;
     }
 
-    const properties = await Property.findAll({
+    if (search) {
+      where[Op.or] = [
+        { title: { [Op.like]: `%${search}%` } },
+        { address: { [Op.like]: `%${search}%` } },
+        { district: { [Op.like]: `%${search}%` } },
+        { city: { [Op.like]: `%${search}%` } }
+      ];
+    }
+
+    const queryOptions = {
       where,
       include: [
         { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone'] }
       ],
       order: [['createdAt', 'DESC']]
-    });
+    };
+
+    if (page && limit) {
+      const pageNum = parseInt(page, 10) || 1;
+      const limitNum = parseInt(limit, 10) || 10;
+      const offset = (pageNum - 1) * limitNum;
+
+      const { count, rows } = await Property.findAndCountAll({
+        ...queryOptions,
+        limit: limitNum,
+        offset,
+        distinct: true
+      });
+
+      const safeProperties = rows.map(p => {
+        const data = p.toJSON();
+        if (!req.user) delete data.commission;
+        return data;
+      });
+
+      return res.json({
+        total: count,
+        totalPages: Math.ceil(count / limitNum),
+        currentPage: pageNum,
+        data: safeProperties
+      });
+    }
+
+    const properties = await Property.findAll(queryOptions);
 
     const safeProperties = properties.map(p => {
       const data = p.toJSON();

@@ -49,6 +49,30 @@ const getLeads = async (req, res) => {
       where.assigneeId = req.user.id;
     }
 
+    if (req.query.page && req.query.limit) {
+      const pageNum = parseInt(req.query.page, 10) || 1;
+      const limitNum = parseInt(req.query.limit, 10) || 10;
+      const offset = (pageNum - 1) * limitNum;
+
+      const { count, rows } = await Lead.findAndCountAll({
+        where,
+        include: [
+          { model: User, as: 'assignee', attributes: ['id', 'name', 'email'] }
+        ],
+        order: [['createdAt', 'DESC']],
+        limit: limitNum,
+        offset,
+        distinct: true
+      });
+
+      return res.json({
+        total: count,
+        totalPages: Math.ceil(count / limitNum),
+        currentPage: pageNum,
+        data: rows
+      });
+    }
+
     const leads = await Lead.findAll({
       where,
       include: [
@@ -58,6 +82,27 @@ const getLeads = async (req, res) => {
     });
 
     res.json(leads);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get public lead activity details (Read-only for shared link)
+// @route   GET /api/leads/public/:id
+// @access  Public
+const getPublicLeadActivity = async (req, res) => {
+  try {
+    const lead = await Lead.findByPk(req.params.id, {
+      include: [
+        { model: User, as: 'assignee', attributes: ['id', 'name', 'phone', 'email'] }
+      ]
+    });
+
+    if (lead) {
+      res.json(lead);
+    } else {
+      res.status(404).json({ message: 'Không tìm thấy thông tin hoạt động của khách hàng' });
+    }
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -136,6 +181,7 @@ const deleteLead = async (req, res) => {
 module.exports = {
   createLead,
   getLeads,
+  getPublicLeadActivity,
   getLeadById,
   updateLead,
   deleteLead,

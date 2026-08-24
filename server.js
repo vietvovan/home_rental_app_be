@@ -42,6 +42,17 @@ app.use(cors({
 
 const compression = require('compression');
 app.use(compression());
+app.disable('x-powered-by');
+
+// Standard HTTP Security Headers Middleware
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
 app.use(express.json({ limit: '10mb' }));
 
 // Global Security & Anti-Malware Sanitizer Middleware
