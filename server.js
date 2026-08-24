@@ -105,8 +105,8 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log('✅ [MySQL] Kết nối cơ sở dữ liệu MySQL thành công!');
 
-    // 2. Tự động đồng bộ các bảng (alter: true giúp cập nhật bảng mà không làm mất dữ liệu)
-    await sequelize.sync({ alter: true });
+    // 2. Tự động đồng bộ các bảng (tạo bảng nếu chưa tồn tại)
+    await sequelize.sync();
     console.log('✅ [Sequelize] Đồng bộ cấu trúc bảng thành công.');
 
     // 3. Lắng nghe yêu cầu trên cổng PORT
