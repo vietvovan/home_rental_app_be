@@ -81,6 +81,21 @@ app.get('/', (req, res) => {
   });
 });
 
+// 404 Not Found Handler
+app.use((req, res) => {
+  res.status(404).json({ message: `API Endpoint ${req.originalUrl} không tồn tại` });
+});
+
+// Global Error Handler Middleware
+app.use((err, req, res, next) => {
+  console.error('❌ [Unhandled Error]', err);
+  const statusCode = err.status || err.statusCode || 500;
+  res.status(statusCode).json({
+    message: err.message || 'Lỗi máy chủ nội bộ',
+    ...(process.env.NODE_ENV === 'development' ? { stack: err.stack } : {})
+  });
+});
+
 const PORT = parseInt(process.env.PORT, 10) || 5000;
 
 // Khởi động server sau khi xác thực và đồng bộ cơ sở dữ liệu MySQL
