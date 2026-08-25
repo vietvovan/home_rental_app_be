@@ -120,6 +120,10 @@ const startServer = async () => {
     await sequelize.sync();
     console.log('✅ [Sequelize] Đồng bộ cấu trúc bảng thành công.');
 
+    // 2.1 Tự động cập nhật cột ENUM sang VARCHAR và thêm cột mới (tránh lỗi Data truncated for column 'status')
+    const autoMigrate = require('./config/migrate');
+    await autoMigrate();
+
     // 3. Lắng nghe yêu cầu trên cổng PORT
     const server = app.listen(PORT, () => {
       console.log(`🚀 [Backend] Server đang chạy ở chế độ "${process.env.NODE_ENV || 'development'}" tại: http://localhost:${PORT}`);

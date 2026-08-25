@@ -41,12 +41,12 @@ const Property = sequelize.define('Property', {
     allowNull: false,
   },
   type: {
-    type: DataTypes.ENUM('Chung cư mini', 'MBKD', 'Sàn VP', 'Nhà nguyên căn', 'Homestay', 'Phòng trọ'),
+    type: DataTypes.STRING(100),
     allowNull: false,
     defaultValue: 'Phòng trọ',
   },
   status: {
-    type: DataTypes.ENUM('Đang trống', 'Sắp trống', 'Đang hoàn thiện', 'Đã cho thuê', 'Đang thương lượng', 'Còn trống'),
+    type: DataTypes.STRING(100),
     defaultValue: 'Đang trống',
   },
   statusDate: {

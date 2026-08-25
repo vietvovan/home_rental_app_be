@@ -45,7 +45,7 @@ const Lead = sequelize.define('Lead', {
     allowNull: true,
   },
   status: {
-    type: DataTypes.ENUM('Đã hẹn xem', 'Đã đóng', 'Thất bại', 'Viewing Scheduled', 'Closed', 'Lost', 'Mới', 'Đã liên hệ'),
+    type: DataTypes.STRING(100),
     defaultValue: 'Đã hẹn xem',
   },
   assigneeId: {

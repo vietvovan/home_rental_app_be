@@ -25,7 +25,7 @@ const Deposit = sequelize.define('Deposit', {
     allowNull: false,
   },
   status: {
-    type: DataTypes.ENUM('Đã nhận', 'Đã hoàn trả', 'Bị giữ cọc'),
+    type: DataTypes.STRING(100),
     defaultValue: 'Đã nhận',
   },
   depositDate: {
