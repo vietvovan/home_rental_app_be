@@ -95,8 +95,49 @@ const Property = sequelize.define('Property', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+  allowCooking: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+  },
+  curfew: {
+    type: DataTypes.STRING,
+    defaultValue: 'Tự do',
+  },
+  liveWithHost: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  frontage: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  length: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  width: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  allowStay: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  floors: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  businessTypes: {
+    type: DataTypes.JSON,
+    allowNull: true,
+  },
   image: {
     type: DataTypes.STRING(500),
+    allowNull: true,
+  },
+  images: {
+    type: DataTypes.JSON,
+    allowNull: true,
   },
   videoUrl: {
     type: DataTypes.STRING(500),

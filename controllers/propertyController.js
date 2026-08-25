@@ -165,17 +165,56 @@ const uploadPropertyImages = async (req, res) => {
   }
 };
 
+// Helper to sanitize numeric inputs
+const sanitizePropertyData = (body) => {
+  const data = { ...body };
+  if (data.price !== undefined && data.price !== null) {
+    const p = Number(String(data.price).replace(/[^0-9.]/g, ''));
+    data.price = isNaN(p) ? 0 : p;
+  }
+  if (data.deposit !== undefined && data.deposit !== null) {
+    const d = Number(String(data.deposit).replace(/[^0-9.]/g, ''));
+    data.deposit = isNaN(d) ? 0 : d;
+  }
+  if (data.commission !== undefined && data.commission !== null) {
+    const c = Number(String(data.commission).replace(/[^0-9.]/g, ''));
+    data.commission = isNaN(c) ? 0 : c;
+  }
+  if (data.area !== undefined && data.area !== null) {
+    const a = Number(String(data.area).replace(/[^0-9.]/g, ''));
+    data.area = isNaN(a) ? 0 : a;
+  }
+  if (data.frontage !== undefined && data.frontage !== null) {
+    const f = Number(String(data.frontage).replace(/[^0-9.]/g, ''));
+    data.frontage = isNaN(f) || f === 0 ? null : f;
+  }
+  if (data.length !== undefined && data.length !== null) {
+    const l = Number(String(data.length).replace(/[^0-9.]/g, ''));
+    data.length = isNaN(l) || l === 0 ? null : l;
+  }
+  if (data.width !== undefined && data.width !== null) {
+    const w = Number(String(data.width).replace(/[^0-9.]/g, ''));
+    data.width = isNaN(w) || w === 0 ? null : w;
+  }
+  if (data.floors !== undefined && data.floors !== null) {
+    const fl = parseInt(String(data.floors).replace(/\D/g, ''), 10);
+    data.floors = isNaN(fl) || fl === 0 ? null : fl;
+  }
+  return data;
+};
+
 // @desc    Create new property
 // @route   POST /api/properties/admin
 // @access  Private/Admin
 const createProperty = async (req, res) => {
   try {
+    const cleanData = sanitizePropertyData(req.body);
     const data = {
-      ...req.body,
+      ...cleanData,
       // Tự động gán agentId là người đăng tin nếu không truyền
-      agentId: req.body.agentId || (req.user ? req.user.id : null),
+      agentId: cleanData.agentId || (req.user ? req.user.id : null),
       // Mặc định khi thêm mới BĐS thì bật tính năng đăng tin
-      isPublished: req.body.isPublished !== undefined ? Boolean(req.body.isPublished) : true,
+      isPublished: cleanData.isPublished !== undefined ? Boolean(cleanData.isPublished) : true,
     };
     const property = await Property.create(data);
     res.status(201).json(property);
@@ -192,11 +231,12 @@ const updateProperty = async (req, res) => {
     const property = await Property.findByPk(req.params.id);
 
     if (property) {
+      const cleanData = sanitizePropertyData(req.body);
       // Nếu ảnh bìa được thay thế → xóa ảnh cũ trên Cloudinary
-      if (req.body.image && req.body.image !== property.image) {
+      if (cleanData.image && cleanData.image !== property.image) {
         await deleteFromCloudinary(property.image);
       }
-      const updatedProperty = await property.update(req.body);
+      const updatedProperty = await property.update(cleanData);
       res.json(updatedProperty);
     } else {
       res.status(404).json({ message: 'Property not found' });

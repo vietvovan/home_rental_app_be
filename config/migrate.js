@@ -47,6 +47,16 @@ async function autoMigrate() {
         { name: 'maxOccupants', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`maxOccupants\` INT DEFAULT 2` },
         { name: 'maxVehicles', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`maxVehicles\` INT DEFAULT 2` },
         { name: 'allowForeigners', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`allowForeigners\` TINYINT(1) DEFAULT 1` },
+        { name: 'allowCooking', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`allowCooking\` TINYINT(1) DEFAULT 1` },
+        { name: 'curfew', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`curfew\` VARCHAR(255) DEFAULT 'Tự do'` },
+        { name: 'liveWithHost', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`liveWithHost\` TINYINT(1) DEFAULT 0` },
+        { name: 'frontage', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`frontage\` DECIMAL(10,2) NULL` },
+        { name: 'length', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`length\` DECIMAL(10,2) NULL` },
+        { name: 'width', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`width\` DECIMAL(10,2) NULL` },
+        { name: 'allowStay', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`allowStay\` TINYINT(1) DEFAULT 0` },
+        { name: 'floors', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`floors\` INT NULL` },
+        { name: 'businessTypes', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`businessTypes\` JSON NULL` },
+        { name: 'images', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`images\` JSON NULL` },
       ];
 
       for (const item of columnsToAdd) {
