@@ -116,13 +116,13 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log('✅ [MySQL] Kết nối cơ sở dữ liệu MySQL thành công!');
 
-    // 2. Tự động đồng bộ các bảng (tạo bảng nếu chưa tồn tại)
-    await sequelize.sync();
-    console.log('✅ [Sequelize] Đồng bộ cấu trúc bảng thành công.');
-
-    // 2.1 Tự động cập nhật cột ENUM sang VARCHAR và thêm cột mới (tránh lỗi Data truncated for column 'status')
+    // 2. Tự động kiểm tra, thêm cột mới (isPublished, ...) và đổi ENUM sang VARCHAR
     const autoMigrate = require('./config/migrate');
     await autoMigrate();
+
+    // 3. Tự động đồng bộ các bảng và index (tạo bảng/index nếu chưa tồn tại)
+    await sequelize.sync();
+    console.log('✅ [Sequelize] Đồng bộ cấu trúc bảng thành công.');
 
     // 3. Lắng nghe yêu cầu trên cổng PORT
     const server = app.listen(PORT, () => {

@@ -1,97 +1,104 @@
 const sequelize = require('./db');
-const { DataTypes } = require('sequelize');
 
 /**
  * Tự động kiểm tra và cập nhật cấu trúc database MySQL / TiDB
- * Đảm bảo các cột ENUM cũ được chuyển sang VARCHAR(100) để không bị lỗi "Data truncated for column 'status'"
- * và đảm bảo tất cả các cột mới được tự động thêm vào nếu bảng đã tồn tại từ trước.
+ * Chạy TRƯỚC KHI sequelize.sync() để:
+ * 1. Thêm cột `isPublished` và các cột mới vào bảng Properties (tránh lỗi column does not exist: isPublished khi sync tạo index)
+ * 2. Đổi các cột ENUM cũ sang VARCHAR(100) (tránh lỗi Data truncated for column 'status')
  */
 async function autoMigrate() {
-  const queryInterface = sequelize.getQueryInterface();
-
   try {
-    // 1. Kiểm tra bảng Properties
-    const tables = await queryInterface.showAllTables();
-    const tableNames = tables.map(t => typeof t === 'object' ? (t.tableName || Object.values(t)[0]) : t);
+    // 1. Lấy danh sách bảng hiện tại trong DB
+    const [tablesResult] = await sequelize.query('SHOW TABLES');
+    const tableNames = tablesResult.map(row => Object.values(row)[0]);
 
-    if (tableNames.includes('Properties') || tableNames.includes('properties')) {
-      const actualTableName = tableNames.includes('Properties') ? 'Properties' : 'properties';
-      const columns = await queryInterface.describeTable(actualTableName);
+    const propTable = tableNames.find(t => t.toLowerCase() === 'properties');
+
+    if (propTable) {
+      // Lấy danh sách các cột hiện có trong bảng Properties
+      const [colsResult] = await sequelize.query(`SHOW COLUMNS FROM \`${propTable}\``);
+      const existingCols = colsResult.map(c => c.Field);
+
+      // Thêm cột isPublished (đặc biệt quan trọng vì có index isPublished trong model)
+      if (!existingCols.includes('isPublished')) {
+        try {
+          await sequelize.query(`ALTER TABLE \`${propTable}\` ADD COLUMN \`isPublished\` TINYINT(1) NOT NULL DEFAULT 1`);
+          console.log(`✅ [AutoMigrate] Đã thêm cột isPublished vào bảng ${propTable}`);
+        } catch (e) {
+          console.warn(`⚠️ [AutoMigrate] Thêm cột isPublished:`, e.message);
+        }
+      }
+
+      // Danh sách các cột bổ sung cần đảm bảo tồn tại
+      const columnsToAdd = [
+        { name: 'commission', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`commission\` DECIMAL(15,2) DEFAULT 0` },
+        { name: 'videoUrl', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`videoUrl\` VARCHAR(500) NULL` },
+        { name: 'availability', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`availability\` DATE NULL` },
+        { name: 'leaseTerm', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`leaseTerm\` VARCHAR(255) NULL` },
+        { name: 'furnishing', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`furnishing\` VARCHAR(255) NULL` },
+        { name: 'statusDate', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`statusDate\` DATE NULL` },
+        { name: 'elevatorType', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`elevatorType\` VARCHAR(255) DEFAULT 'Thang máy'` },
+        { name: 'availableFloors', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`availableFloors\` VARCHAR(255) NULL` },
+        { name: 'alleyType', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`alleyType\` VARCHAR(255) DEFAULT 'Ô tô'` },
+        { name: 'hasWashingMachine', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`hasWashingMachine\` TINYINT(1) DEFAULT 1` },
+        { name: 'hasDryer', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`hasDryer\` TINYINT(1) DEFAULT 0` },
+        { name: 'hasEvCharging', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`hasEvCharging\` TINYINT(1) DEFAULT 0` },
+        { name: 'allowPets', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`allowPets\` TINYINT(1) DEFAULT 0` },
+        { name: 'maxOccupants', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`maxOccupants\` INT DEFAULT 2` },
+        { name: 'maxVehicles', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`maxVehicles\` INT DEFAULT 2` },
+        { name: 'allowForeigners', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`allowForeigners\` TINYINT(1) DEFAULT 1` },
+      ];
+
+      for (const item of columnsToAdd) {
+        if (!existingCols.includes(item.name)) {
+          try {
+            await sequelize.query(item.sql);
+            console.log(`✅ [AutoMigrate] Đã thêm cột ${item.name} vào bảng ${propTable}`);
+          } catch (e) {
+            console.warn(`⚠️ [AutoMigrate] Thêm cột ${item.name}:`, e.message);
+          }
+        }
+      }
 
       // Chuyển status và type từ ENUM sang VARCHAR để không bị lỗi truncate
       try {
-        await sequelize.query(`ALTER TABLE \`${actualTableName}\` MODIFY COLUMN \`status\` VARCHAR(100) DEFAULT 'Đang trống'`);
-        console.log('✅ [AutoMigrate] Đã cập nhật Properties.status thành VARCHAR(100)');
+        await sequelize.query(`ALTER TABLE \`${propTable}\` MODIFY COLUMN \`status\` VARCHAR(100) DEFAULT 'Đang trống'`);
+        console.log(`✅ [AutoMigrate] Đã cập nhật ${propTable}.status sang VARCHAR(100)`);
       } catch (err) {
-        console.warn('⚠️ [AutoMigrate] Cập nhật Properties.status:', err.message);
+        console.warn(`⚠️ [AutoMigrate] Cập nhật ${propTable}.status:`, err.message);
       }
 
       try {
-        await sequelize.query(`ALTER TABLE \`${actualTableName}\` MODIFY COLUMN \`type\` VARCHAR(100) DEFAULT 'Phòng trọ'`);
-        console.log('✅ [AutoMigrate] Đã cập nhật Properties.type thành VARCHAR(100)');
+        await sequelize.query(`ALTER TABLE \`${propTable}\` MODIFY COLUMN \`type\` VARCHAR(100) DEFAULT 'Phòng trọ'`);
+        console.log(`✅ [AutoMigrate] Đã cập nhật ${propTable}.type sang VARCHAR(100)`);
       } catch (err) {
-        console.warn('⚠️ [AutoMigrate] Cập nhật Properties.type:', err.message);
-      }
-
-      // Danh sách các cột cần đảm bảo tồn tại
-      const requiredColumns = [
-        { name: 'commission', type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
-        { name: 'videoUrl', type: DataTypes.STRING(500), allowNull: true },
-        { name: 'availability', type: DataTypes.DATEONLY, allowNull: true },
-        { name: 'leaseTerm', type: DataTypes.STRING, allowNull: true },
-        { name: 'furnishing', type: DataTypes.STRING, allowNull: true },
-        { name: 'statusDate', type: DataTypes.DATEONLY, allowNull: true },
-        { name: 'elevatorType', type: DataTypes.STRING, defaultValue: 'Thang máy' },
-        { name: 'availableFloors', type: DataTypes.STRING, allowNull: true },
-        { name: 'alleyType', type: DataTypes.STRING, defaultValue: 'Ô tô' },
-        { name: 'hasWashingMachine', type: DataTypes.BOOLEAN, defaultValue: true },
-        { name: 'hasDryer', type: DataTypes.BOOLEAN, defaultValue: false },
-        { name: 'hasEvCharging', type: DataTypes.BOOLEAN, defaultValue: false },
-        { name: 'allowPets', type: DataTypes.BOOLEAN, defaultValue: false },
-        { name: 'maxOccupants', type: DataTypes.INTEGER, defaultValue: 2 },
-        { name: 'maxVehicles', type: DataTypes.INTEGER, defaultValue: 2 },
-        { name: 'allowForeigners', type: DataTypes.BOOLEAN, defaultValue: true },
-        { name: 'isPublished', type: DataTypes.BOOLEAN, defaultValue: true },
-      ];
-
-      for (const col of requiredColumns) {
-        if (!columns[col.name]) {
-          try {
-            await queryInterface.addColumn(actualTableName, col.name, {
-              type: col.type,
-              allowNull: col.allowNull !== undefined ? col.allowNull : true,
-              defaultValue: col.defaultValue,
-            });
-            console.log(`✅ [AutoMigrate] Đã thêm cột ${col.name} vào bảng ${actualTableName}`);
-          } catch (colErr) {
-            console.warn(`⚠️ [AutoMigrate] Thêm cột ${col.name}:`, colErr.message);
-          }
-        }
+        console.warn(`⚠️ [AutoMigrate] Cập nhật ${propTable}.type:`, err.message);
       }
     }
 
     // 2. Kiểm tra bảng Leads
-    if (tableNames.includes('Leads') || tableNames.includes('leads')) {
-      const actualTableName = tableNames.includes('Leads') ? 'Leads' : 'leads';
+    const leadTable = tableNames.find(t => t.toLowerCase() === 'leads');
+    if (leadTable) {
       try {
-        await sequelize.query(`ALTER TABLE \`${actualTableName}\` MODIFY COLUMN \`status\` VARCHAR(100) DEFAULT 'Đã hẹn xem'`);
-        console.log('✅ [AutoMigrate] Đã cập nhật Leads.status thành VARCHAR(100)');
+        await sequelize.query(`ALTER TABLE \`${leadTable}\` MODIFY COLUMN \`status\` VARCHAR(100) DEFAULT 'Đã hẹn xem'`);
+        console.log(`✅ [AutoMigrate] Đã cập nhật ${leadTable}.status sang VARCHAR(100)`);
       } catch (err) {
-        console.warn('⚠️ [AutoMigrate] Cập nhật Leads.status:', err.message);
+        console.warn(`⚠️ [AutoMigrate] Cập nhật ${leadTable}.status:`, err.message);
       }
     }
 
     // 3. Kiểm tra bảng Deposits
-    if (tableNames.includes('Deposits') || tableNames.includes('deposits')) {
-      const actualTableName = tableNames.includes('Deposits') ? 'Deposits' : 'deposits';
+    const depositTable = tableNames.find(t => t.toLowerCase() === 'deposits');
+    if (depositTable) {
       try {
-        await sequelize.query(`ALTER TABLE \`${actualTableName}\` MODIFY COLUMN \`status\` VARCHAR(100) DEFAULT 'Đã nhận'`);
-        console.log('✅ [AutoMigrate] Đã cập nhật Deposits.status thành VARCHAR(100)');
+        await sequelize.query(`ALTER TABLE \`${depositTable}\` MODIFY COLUMN \`status\` VARCHAR(100) DEFAULT 'Đã nhận'`);
+        console.log(`✅ [AutoMigrate] Đã cập nhật ${depositTable}.status sang VARCHAR(100)`);
       } catch (err) {
-        console.warn('⚠️ [AutoMigrate] Cập nhật Deposits.status:', err.message);
+        console.warn(`⚠️ [AutoMigrate] Cập nhật ${depositTable}.status:`, err.message);
       }
     }
 
+    console.log('✅ [AutoMigrate] Hoàn tất di trú và đồng bộ cấu trúc database.');
   } catch (error) {
     console.error('❌ [AutoMigrate Error]', error.message);
   }
