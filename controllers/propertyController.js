@@ -7,12 +7,22 @@ const { deleteFromCloudinary } = require('../config/cloudinary');
 // @access  Public
 const getProperties = async (req, res) => {
   try {
-    const { status, type, minPrice, maxPrice, featured, search, page, limit } = req.query;
+    const { status, type, minPrice, maxPrice, featured, isPublished, search, page, limit } = req.query;
     
     const where = {};
     if (status) where.status = status;
     if (type) where.type = type;
     if (featured === 'true') where.isFeatured = true;
+
+    // Kiểm tra quyền hạn:
+    // - Khách vãng lai / Public: BẮT BUỘC chỉ thấy tin đang bật đăng (isPublished: true)
+    // - Nhân viên (Admin/Manager/Agent): Thấy tất cả hoặc có thể lọc theo isPublished
+    const isStaff = req.user && ['Admin', 'Manager', 'Agent'].includes(req.user.role);
+    if (!isStaff) {
+      where.isPublished = true;
+    } else if (isPublished !== undefined && isPublished !== 'All' && isPublished !== '') {
+      where.isPublished = isPublished === 'true';
+    }
     
     if (minPrice || maxPrice) {
       where.price = {};
@@ -24,8 +34,6 @@ const getProperties = async (req, res) => {
       where[Op.or] = [
         { title: { [Op.like]: `%${search}%` } },
         { address: { [Op.like]: `%${search}%` } },
-        { district: { [Op.like]: `%${search}%` } },
-        { city: { [Op.like]: `%${search}%` } }
       ];
     }
 
@@ -83,9 +91,13 @@ const getProperties = async (req, res) => {
 const getFeaturedProperties = async (req, res) => {
   try {
     const properties = await Property.findAll({
-      where: { isFeatured: true, status: 'Còn trống' },
+      where: {
+        isFeatured: true,
+        isPublished: true,
+        status: { [Op.ne]: 'Đã cho thuê' }
+      },
       include: [
-        { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone'] }
+        { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone', 'role'] }
       ],
       limit: 6,
       order: [['createdAt', 'DESC']]
@@ -110,11 +122,16 @@ const getPropertyById = async (req, res) => {
   try {
     const property = await Property.findByPk(req.params.id, {
       include: [
-        { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone'] }
+        { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone', 'role'] }
       ]
     });
 
     if (property) {
+      const isStaff = req.user && ['Admin', 'Manager', 'Agent'].includes(req.user.role);
+      if (!isStaff && property.isPublished === false) {
+        return res.status(404).json({ message: 'Bất động sản này hiện đang tạm dừng đăng tin' });
+      }
+
       const propertyData = property.toJSON();
       if (!req.user) delete propertyData.commission;
       res.json(propertyData);
@@ -153,7 +170,14 @@ const uploadPropertyImages = async (req, res) => {
 // @access  Private/Admin
 const createProperty = async (req, res) => {
   try {
-    const property = await Property.create(req.body);
+    const data = {
+      ...req.body,
+      // Tự động gán agentId là người đăng tin nếu không truyền
+      agentId: req.body.agentId || (req.user ? req.user.id : null),
+      // Mặc định khi thêm mới BĐS thì bật tính năng đăng tin
+      isPublished: req.body.isPublished !== undefined ? Boolean(req.body.isPublished) : true,
+    };
+    const property = await Property.create(data);
     res.status(201).json(property);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -177,6 +201,27 @@ const updateProperty = async (req, res) => {
     } else {
       res.status(404).json({ message: 'Property not found' });
     }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Toggle publish status
+// @route   PATCH /api/properties/admin/:id/toggle-publish
+// @access  Private/Admin
+const togglePublishProperty = async (req, res) => {
+  try {
+    const property = await Property.findByPk(req.params.id);
+    if (!property) {
+      return res.status(404).json({ message: 'Không tìm thấy bất động sản' });
+    }
+    const newStatus = property.isPublished === false ? true : false;
+    await property.update({ isPublished: newStatus });
+    res.json({
+      success: true,
+      message: newStatus ? 'Đã bật đăng tin BĐS thành công' : 'Đã tắt đăng tin BĐS thành công',
+      property,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -209,5 +254,6 @@ module.exports = {
   uploadPropertyImages,
   createProperty,
   updateProperty,
+  togglePublishProperty,
   deleteProperty,
 };

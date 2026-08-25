@@ -7,6 +7,7 @@ const {
   uploadPropertyImages,
   createProperty,
   updateProperty,
+  togglePublishProperty,
   deleteProperty
 } = require('../controllers/propertyController');
 const { uploadProperty } = require('../config/cloudinary');
@@ -22,6 +23,7 @@ router.get('/:id', optionalProtect, getPropertyById);
 router.post('/upload-images', protect, adminOrManager, uploadProperty.array('images', 20), uploadPropertyImages);
 router.post('/admin', protect, adminOrManager, createProperty);
 router.put('/admin/:id', protect, adminOrManager, updateProperty);
+router.patch('/admin/:id/toggle-publish', protect, adminOrManager, togglePublishProperty);
 router.delete('/admin/:id', protect, adminOrManager, deleteProperty);
 
 module.exports = router;

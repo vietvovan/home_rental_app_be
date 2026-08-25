@@ -41,13 +41,59 @@ const Property = sequelize.define('Property', {
     allowNull: false,
   },
   type: {
-    type: DataTypes.ENUM('Phòng trọ', 'Nhà ở', 'Studio', 'Chung cư', 'Văn phòng'),
+    type: DataTypes.ENUM('Chung cư mini', 'MBKD', 'Sàn VP', 'Nhà nguyên căn', 'Homestay', 'Phòng trọ'),
     allowNull: false,
     defaultValue: 'Phòng trọ',
   },
   status: {
-    type: DataTypes.ENUM('Còn trống', 'Đã cho thuê', 'Đang thương lượng'),
-    defaultValue: 'Còn trống',
+    type: DataTypes.ENUM('Đang trống', 'Sắp trống', 'Đang hoàn thiện', 'Đã cho thuê', 'Đang thương lượng', 'Còn trống'),
+    defaultValue: 'Đang trống',
+  },
+  statusDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
+  elevatorType: {
+    type: DataTypes.STRING,
+    defaultValue: 'Thang máy',
+  },
+  availableFloors: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  alleyType: {
+    type: DataTypes.STRING,
+    defaultValue: 'Ô tô',
+  },
+  hasWashingMachine: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+  },
+  hasDryer: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  hasEvCharging: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  allowPets: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  maxOccupants: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 2,
+  },
+  maxVehicles: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 2,
+  },
+  allowForeigners: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
   },
   image: {
     type: DataTypes.STRING(500),
@@ -82,6 +128,11 @@ const Property = sequelize.define('Property', {
   isFeatured: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
+  },
+  isPublished: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
   }
 }, {
   tableName: 'Properties',
@@ -89,6 +140,7 @@ const Property = sequelize.define('Property', {
   indexes: [
     { fields: ['status'] },
     { fields: ['isFeatured'] },
+    { fields: ['isPublished'] },
     { fields: ['type'] },
     { fields: ['price'] },
     { fields: ['agentId'] },
