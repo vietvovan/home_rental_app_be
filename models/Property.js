@@ -15,6 +15,10 @@ const Property = sequelize.define('Property', {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  exactAddress: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   price: {
     type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
@@ -145,6 +149,10 @@ const Property = sequelize.define('Property', {
   },
   amenities: {
     type: DataTypes.JSON,
+  },
+  serviceFees: {
+    type: DataTypes.JSON,
+    allowNull: true,
   },
   availability: {
     type: DataTypes.DATEONLY,

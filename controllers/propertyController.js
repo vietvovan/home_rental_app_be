@@ -42,7 +42,7 @@ const getProperties = async (req, res) => {
       include: [
         { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone'] }
       ],
-      order: [['createdAt', 'DESC']]
+      order: [['isFeatured', 'DESC'], ['createdAt', 'DESC']]
     };
 
     if (page && limit) {
@@ -59,7 +59,15 @@ const getProperties = async (req, res) => {
 
       const safeProperties = rows.map(p => {
         const data = p.toJSON();
-        if (!req.user) delete data.commission;
+        if (!req.user) {
+          delete data.commission;
+          delete data.exactAddress;
+        } else {
+          const role = (req.user.role || '').toLowerCase();
+          if (role !== 'admin' && role !== 'manager') {
+            delete data.exactAddress;
+          }
+        }
         return data;
       });
 
@@ -75,7 +83,15 @@ const getProperties = async (req, res) => {
 
     const safeProperties = properties.map(p => {
       const data = p.toJSON();
-      if (!req.user) delete data.commission;
+      if (!req.user) {
+        delete data.commission;
+        delete data.exactAddress;
+      } else {
+        const role = (req.user.role || '').toLowerCase();
+        if (role !== 'admin' && role !== 'manager') {
+          delete data.exactAddress;
+        }
+      }
       return data;
     });
 
@@ -105,7 +121,15 @@ const getFeaturedProperties = async (req, res) => {
 
     const safeProperties = properties.map(p => {
       const data = p.toJSON();
-      if (!req.user) delete data.commission;
+      if (!req.user) {
+        delete data.commission;
+        delete data.exactAddress;
+      } else {
+        const role = (req.user.role || '').toLowerCase();
+        if (role !== 'admin' && role !== 'manager') {
+          delete data.exactAddress;
+        }
+      }
       return data;
     });
 
@@ -133,7 +157,15 @@ const getPropertyById = async (req, res) => {
       }
 
       const propertyData = property.toJSON();
-      if (!req.user) delete propertyData.commission;
+      if (!req.user) {
+        delete propertyData.commission;
+        delete propertyData.exactAddress;
+      } else {
+        const role = (req.user.role || '').toLowerCase();
+        if (role !== 'admin' && role !== 'manager') {
+          delete propertyData.exactAddress;
+        }
+      }
       res.json(propertyData);
     } else {
       res.status(404).json({ message: 'Property not found' });
@@ -199,6 +231,21 @@ const sanitizePropertyData = (body) => {
   if (data.floors !== undefined && data.floors !== null) {
     const fl = parseInt(String(data.floors).replace(/\D/g, ''), 10);
     data.floors = isNaN(fl) || fl === 0 ? null : fl;
+  }
+  if (data.exactAddress !== undefined) {
+    data.exactAddress = data.exactAddress ? String(data.exactAddress).trim() : null;
+  }
+  if (data.isFeatured !== undefined) {
+    data.isFeatured = Boolean(data.isFeatured);
+  }
+  if (data.serviceFees !== undefined) {
+    if (typeof data.serviceFees === 'string') {
+      try {
+        data.serviceFees = JSON.parse(data.serviceFees);
+      } catch {
+        data.serviceFees = null;
+      }
+    }
   }
   return data;
 };

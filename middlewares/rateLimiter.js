@@ -7,7 +7,7 @@
 const ipRequestStore = new Map();
 
 // Tự động dọn dẹp bộ nhớ mỗi 5 phút
-setInterval(() => {
+const cleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [key, records] of ipRequestStore.entries()) {
     const valid = records.filter(timestamp => now - timestamp < 15 * 60 * 1000);
@@ -18,6 +18,10 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+
+if (cleanupInterval && typeof cleanupInterval.unref === 'function') {
+  cleanupInterval.unref();
+}
 
 /**
  * Factory tạo middleware giới hạn tần suất

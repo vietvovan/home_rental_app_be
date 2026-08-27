@@ -29,8 +29,8 @@ const THREAT_PATTERNS = [
 /**
  * Hàm đệ quy kiểm tra toàn bộ giá trị trong object / string / array
  */
-function scanValueForThreats(val, path = '') {
-  if (val === null || val === undefined) return null;
+function scanValueForThreats(val, path = '', depth = 0) {
+  if (val === null || val === undefined || depth > 10) return null;
 
   if (typeof val === 'string') {
     for (const threat of THREAT_PATTERNS) {
@@ -47,7 +47,7 @@ function scanValueForThreats(val, path = '') {
 
   if (Array.isArray(val)) {
     for (let i = 0; i < val.length; i++) {
-      const found = scanValueForThreats(val[i], `${path}[${i}]`);
+      const found = scanValueForThreats(val[i], `${path}[${i}]`, depth + 1);
       if (found) return found;
     }
     return null;
@@ -63,7 +63,7 @@ function scanValueForThreats(val, path = '') {
           sample: key,
         };
       }
-      const found = scanValueForThreats(val[key], path ? `${path}.${key}` : key);
+      const found = scanValueForThreats(val[key], path ? `${path}.${key}` : key, depth + 1);
       if (found) return found;
     }
     return null;
@@ -75,15 +75,15 @@ function scanValueForThreats(val, path = '') {
 /**
  * Hàm làm sạch (Sanitize) chuỗi: Xóa HTML nguy hiểm & trim khoảng trắng
  */
-function sanitizeClean(obj) {
-  if (!obj || typeof obj !== 'object') return obj;
+function sanitizeClean(obj, depth = 0) {
+  if (!obj || typeof obj !== 'object' || depth > 10) return obj;
 
   for (const key of Object.keys(obj)) {
     if (typeof obj[key] === 'string') {
       // Trim khoảng trắng thừa
       obj[key] = obj[key].trim();
-    } else if (typeof obj[key] === 'object') {
-      sanitizeClean(obj[key]);
+    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+      sanitizeClean(obj[key], depth + 1);
     }
   }
   return obj;

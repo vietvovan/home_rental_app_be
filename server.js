@@ -107,6 +107,15 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Chống sập server khi gặp lỗi không đồng bộ chưa bắt (Uncaught Exception & Unhandled Rejection)
+process.on('uncaughtException', (err) => {
+  console.error('💥 [Uncaught Exception Crash Prevented]:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('⚠️ [Unhandled Promise Rejection Prevented]:', reason);
+});
+
 const PORT = parseInt(process.env.PORT, 10) || 5000;
 
 // Khởi động server sau khi xác thực và đồng bộ cơ sở dữ liệu MySQL
@@ -116,7 +125,7 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log('✅ [MySQL] Kết nối cơ sở dữ liệu MySQL thành công!');
 
-    // 2. Tự động kiểm tra, thêm cột mới (isPublished, ...) và đổi ENUM sang VARCHAR
+    // 2. Tự động kiểm tra, thêm cột mới (isPublished, isFeatured, exactAddress, ...) và đổi ENUM sang VARCHAR
     const autoMigrate = require('./config/migrate');
     await autoMigrate();
 
@@ -124,11 +133,28 @@ const startServer = async () => {
     await sequelize.sync();
     console.log('✅ [Sequelize] Đồng bộ cấu trúc bảng thành công.');
 
-    // 3. Lắng nghe yêu cầu trên cổng PORT
+    // 4. Lắng nghe yêu cầu trên cổng PORT
     const server = app.listen(PORT, () => {
       console.log(`🚀 [Backend] Server đang chạy ở chế độ "${process.env.NODE_ENV || 'development'}" tại: http://localhost:${PORT}`);
       console.log(`📡 [API Endpoint] http://localhost:${PORT}/api`);
     });
+
+    // Xử lý đóng kết nối an toàn khi server nhận tín hiệu dừng (Graceful Shutdown)
+    const gracefulShutdown = (signal) => {
+      console.log(`\n🛑 [Server] Nhận tín hiệu ${signal}. Đang đóng kết nối an toàn...`);
+      server.close(async () => {
+        try {
+          await sequelize.close();
+          console.log('🔒 [MySQL] Đã đóng toàn bộ kết nối cơ sở dữ liệu.');
+        } catch (dbErr) {
+          console.error('⚠️ [MySQL] Lỗi khi đóng DB:', dbErr.message);
+        }
+        process.exit(0);
+      });
+    };
+
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
     // Xử lý lỗi cổng đã bị chiếm (EADDRINUSE)
     server.on('error', (err) => {

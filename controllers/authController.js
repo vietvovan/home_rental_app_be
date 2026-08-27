@@ -211,6 +211,58 @@ const forgotPassword = async (req, res) => {
   }
 };
 
+// @desc    Change Password for current user
+// @route   PUT /api/auth/change-password
+// @access  Private
+const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Vui lòng nhập mật khẩu hiện tại và mật khẩu mới.' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'Mật khẩu mới phải có độ dài tối thiểu 6 ký tự.' });
+    }
+
+    if (confirmPassword && newPassword !== confirmPassword) {
+      return res.status(400).json({ message: 'Mật khẩu xác nhận không khớp với mật khẩu mới.' });
+    }
+
+    // Tìm user kèm passwordHash
+    const user = await User.findByPk(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy thông tin tài khoản người dùng.' });
+    }
+
+    // Kiểm tra mật khẩu hiện tại
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Mật khẩu hiện tại không chính xác. Vui lòng kiểm tra lại.' });
+    }
+
+    // Kiểm tra mật khẩu mới có trùng mật khẩu cũ không
+    const isSame = await bcrypt.compare(newPassword, user.passwordHash);
+    if (isSame) {
+      return res.status(400).json({ message: 'Mật khẩu mới không được trùng với mật khẩu hiện tại.' });
+    }
+
+    // Mã hóa mật khẩu mới và lưu
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(newPassword, salt);
+    await user.update({ passwordHash });
+
+    res.json({
+      success: true,
+      message: 'Đổi mật khẩu thành công! Vui lòng ghi nhớ mật khẩu mới của bạn.',
+    });
+  } catch (error) {
+    console.error('Lỗi đổi mật khẩu:', error);
+    res.status(500).json({ message: error.message || 'Lỗi hệ thống khi đổi mật khẩu.' });
+  }
+};
+
 // @desc    Get current user info
 // @route   GET /api/auth/me
 // @access  Private
@@ -226,5 +278,6 @@ module.exports = {
   register,
   login,
   forgotPassword,
+  changePassword,
   getMe,
 };
