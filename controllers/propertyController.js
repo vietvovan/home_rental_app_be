@@ -334,6 +334,50 @@ const deleteProperty = async (req, res) => {
   }
 };
 
+// @desc    Download/proxy image to force file download with proper attachment headers
+// @route   GET /api/properties/download-image
+// @access  Public
+const downloadImageProxy = async (req, res) => {
+  try {
+    const { url, filename } = req.query;
+    if (!url) {
+      return res.status(400).json({ message: 'URL is required' });
+    }
+
+    const safeFilename = filename || 'anh-bds.jpg';
+    const httpModule = url.startsWith('https:') ? require('https') : require('http');
+
+    const handleStream = (targetUrl) => {
+      httpModule.get(targetUrl, (response) => {
+        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          return handleStream(response.headers.location);
+        }
+        if (response.statusCode !== 200) {
+          return res.status(response.statusCode).json({ message: 'Cannot fetch image from source' });
+        }
+
+        const contentType = response.headers['content-type'] || 'image/jpeg';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeFilename)}"`);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        response.pipe(res);
+      }).on('error', (err) => {
+        console.error('Error fetching image in download proxy:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ message: 'Failed to download image' });
+        }
+      });
+    };
+
+    handleStream(url);
+  } catch (error) {
+    console.error('Error in downloadImageProxy:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+};
+
 module.exports = {
   getProperties,
   getFeaturedProperties,
@@ -343,4 +387,5 @@ module.exports = {
   updateProperty,
   togglePublishProperty,
   deleteProperty,
+  downloadImageProxy,
 };

@@ -8,7 +8,8 @@ const {
   createProperty,
   updateProperty,
   togglePublishProperty,
-  deleteProperty
+  deleteProperty,
+  downloadImageProxy
 } = require('../controllers/propertyController');
 const { uploadProperty } = require('../config/cloudinary');
 const { protect, optionalProtect, adminOrManager } = require('../middlewares/authMiddleware');
@@ -16,6 +17,7 @@ const { protect, optionalProtect, adminOrManager } = require('../middlewares/aut
 // Public routes
 router.get('/', optionalProtect, getProperties);
 router.get('/featured', optionalProtect, getFeaturedProperties);
+router.get('/download-image', downloadImageProxy);
 router.get('/:id', optionalProtect, getPropertyById);
 
 // Admin routes
