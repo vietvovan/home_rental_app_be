@@ -100,7 +100,11 @@ const uploadBlogImage = async (req, res) => {
 // @access  Private/Admin
 const createBlog = async (req, res) => {
   try {
-    const newBlog = { ...req.body, authorId: req.user.id };
+    const newBlog = {
+      ...req.body,
+      authorId: req.user.id,
+      isFeatured: Boolean(req.body.isFeatured),
+    };
     const blog = await BlogPost.create(newBlog);
     res.status(201).json(blog);
   } catch (error) {
@@ -120,7 +124,11 @@ const updateBlog = async (req, res) => {
       if (req.body.image && req.body.image !== blog.image) {
         await deleteFromCloudinary(blog.image);
       }
-      const updatedBlog = await blog.update(req.body);
+      const updateData = { ...req.body };
+      if (updateData.isFeatured !== undefined) {
+        updateData.isFeatured = Boolean(updateData.isFeatured);
+      }
+      const updatedBlog = await blog.update(updateData);
       res.json(updatedBlog);
     } else {
       res.status(404).json({ message: 'Blog post not found' });

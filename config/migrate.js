@@ -60,6 +60,7 @@ async function autoMigrate() {
         { name: 'exactAddress', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`exactAddress\` VARCHAR(500) NULL` },
         { name: 'isFeatured', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`isFeatured\` TINYINT(1) DEFAULT 0` },
         { name: 'serviceFees', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`serviceFees\` JSON NULL` },
+        { name: 'description', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`description\` LONGTEXT NULL` },
       ];
 
       for (const item of columnsToAdd) {

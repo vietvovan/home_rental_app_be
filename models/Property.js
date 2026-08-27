@@ -182,6 +182,10 @@ const Property = sequelize.define('Property', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
     allowNull: false,
+  },
+  description: {
+    type: DataTypes.LONGTEXT,
+    allowNull: true,
   }
 }, {
   tableName: 'Properties',
