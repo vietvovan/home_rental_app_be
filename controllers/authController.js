@@ -4,9 +4,9 @@ const nodemailer = require('nodemailer');
 const { User } = require('../models');
 
 // Generate JWT
-const generateToken = (id) => {
+const generateToken = (id, rememberMe = true) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: '30d',
+    expiresIn: rememberMe ? '30d' : '1d',
   });
 };
 
@@ -105,7 +105,7 @@ const register = async (req, res) => {
 // @access  Public
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, rememberMe } = req.body;
 
     // Check for user email
     const user = await User.findOne({ where: { email: email ? email.trim().toLowerCase() : '' } });
@@ -116,12 +116,17 @@ const login = async (req, res) => {
         return res.status(403).json({ message: 'Tài khoản của bạn đang chờ Admin phê duyệt.' });
       }
 
+      const shouldRemember = rememberMe !== false;
+
       res.json({
         id: user.id,
         name: user.name,
         email: user.email,
         role: user.role,
-        token: generateToken(user.id),
+        phone: user.phone,
+        address: user.address,
+        rememberMe: shouldRemember,
+        token: generateToken(user.id, shouldRemember),
       });
     } else {
       res.status(401).json({ message: 'Email hoặc mật khẩu không chính xác' });
