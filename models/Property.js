@@ -184,7 +184,7 @@ const Property = sequelize.define('Property', {
     allowNull: false,
   },
   description: {
-    type: DataTypes.LONGTEXT,
+    type: DataTypes.TEXT('long'),
     allowNull: true,
   }
 }, {
