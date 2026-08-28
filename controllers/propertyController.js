@@ -2,6 +2,28 @@ const { Property, User } = require('../models');
 const { Op } = require('sequelize');
 const { deleteFromCloudinary } = require('../config/cloudinary');
 
+/**
+ * Lọc bỏ các trường dữ liệu bảo mật nếu không đủ quyền:
+ * - commission: Ẩn với khách vãng lai chưa đăng nhập
+ * - exactAddress, zaloGroupUrl: ẨN TUYỆT ĐỐI nếu không phải vai trò Admin hoặc Manager
+ */
+const filterSensitivePropertyFields = (data, user) => {
+  if (!data) return data;
+  const userRole = (user?.role || '').toLowerCase();
+  const isAdminOrManager = userRole === 'admin' || userRole === 'manager';
+
+  if (!user) {
+    delete data.commission;
+  }
+
+  if (!isAdminOrManager) {
+    delete data.exactAddress;
+    delete data.zaloGroupUrl;
+  }
+
+  return data;
+};
+
 // @desc    Get all properties
 // @route   GET /api/properties
 // @access  Public
@@ -58,17 +80,7 @@ const getProperties = async (req, res) => {
       });
 
       const safeProperties = rows.map(p => {
-        const data = p.toJSON();
-        if (!req.user) {
-          delete data.commission;
-          delete data.exactAddress;
-        } else {
-          const role = (req.user.role || '').toLowerCase();
-          if (role !== 'admin' && role !== 'manager') {
-            delete data.exactAddress;
-          }
-        }
-        return data;
+        return filterSensitivePropertyFields(p.toJSON(), req.user);
       });
 
       return res.json({
@@ -82,17 +94,7 @@ const getProperties = async (req, res) => {
     const properties = await Property.findAll(queryOptions);
 
     const safeProperties = properties.map(p => {
-      const data = p.toJSON();
-      if (!req.user) {
-        delete data.commission;
-        delete data.exactAddress;
-      } else {
-        const role = (req.user.role || '').toLowerCase();
-        if (role !== 'admin' && role !== 'manager') {
-          delete data.exactAddress;
-        }
-      }
-      return data;
+      return filterSensitivePropertyFields(p.toJSON(), req.user);
     });
 
     res.json(safeProperties);
@@ -120,17 +122,7 @@ const getFeaturedProperties = async (req, res) => {
     });
 
     const safeProperties = properties.map(p => {
-      const data = p.toJSON();
-      if (!req.user) {
-        delete data.commission;
-        delete data.exactAddress;
-      } else {
-        const role = (req.user.role || '').toLowerCase();
-        if (role !== 'admin' && role !== 'manager') {
-          delete data.exactAddress;
-        }
-      }
-      return data;
+      return filterSensitivePropertyFields(p.toJSON(), req.user);
     });
 
     res.json(safeProperties);
@@ -156,16 +148,7 @@ const getPropertyById = async (req, res) => {
         return res.status(404).json({ message: 'Bất động sản này hiện đang tạm dừng đăng tin' });
       }
 
-      const propertyData = property.toJSON();
-      if (!req.user) {
-        delete propertyData.commission;
-        delete propertyData.exactAddress;
-      } else {
-        const role = (req.user.role || '').toLowerCase();
-        if (role !== 'admin' && role !== 'manager') {
-          delete propertyData.exactAddress;
-        }
-      }
+      const propertyData = filterSensitivePropertyFields(property.toJSON(), req.user);
       res.json(propertyData);
     } else {
       res.status(404).json({ message: 'Property not found' });
@@ -234,6 +217,9 @@ const sanitizePropertyData = (body) => {
   }
   if (data.exactAddress !== undefined) {
     data.exactAddress = data.exactAddress ? String(data.exactAddress).trim() : null;
+  }
+  if (data.zaloGroupUrl !== undefined) {
+    data.zaloGroupUrl = data.zaloGroupUrl ? String(data.zaloGroupUrl).trim() : null;
   }
   if (data.isFeatured !== undefined) {
     data.isFeatured = Boolean(data.isFeatured);

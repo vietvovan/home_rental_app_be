@@ -58,6 +58,7 @@ async function autoMigrate() {
         { name: 'businessTypes', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`businessTypes\` JSON NULL` },
         { name: 'images', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`images\` JSON NULL` },
         { name: 'exactAddress', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`exactAddress\` VARCHAR(500) NULL` },
+        { name: 'zaloGroupUrl', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`zaloGroupUrl\` VARCHAR(500) NULL` },
         { name: 'isFeatured', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`isFeatured\` TINYINT(1) DEFAULT 0` },
         { name: 'serviceFees', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`serviceFees\` JSON NULL` },
         { name: 'description', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`description\` LONGTEXT NULL` },

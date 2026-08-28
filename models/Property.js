@@ -147,6 +147,10 @@ const Property = sequelize.define('Property', {
     type: DataTypes.STRING(500),
     allowNull: true,
   },
+  zaloGroupUrl: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  },
   amenities: {
     type: DataTypes.JSON,
   },
