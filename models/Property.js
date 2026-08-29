@@ -67,7 +67,7 @@ const Property = sequelize.define('Property', {
   },
   alleyType: {
     type: DataTypes.STRING,
-    defaultValue: 'Ô tô',
+    defaultValue: 'Xe máy',
   },
   hasWashingMachine: {
     type: DataTypes.BOOLEAN,
@@ -202,6 +202,15 @@ const Property = sequelize.define('Property', {
     { fields: ['price'] },
     { fields: ['agentId'] },
     { fields: ['createdAt'] },
+    // Index bổ sung cho các trường filter phổ biến
+    { fields: ['beds'] },
+    { fields: ['alleyType'] },
+    { fields: ['maxOccupants'] },
+    { fields: ['maxVehicles'] },
+    { fields: ['availability'] },
+    // Composite index cho query public (chủ yếu: đăng tin + nổi bật + giá)
+    { fields: ['isPublished', 'isFeatured', 'price'] },
+    { fields: ['isPublished', 'status'] },
   ],
 });
 

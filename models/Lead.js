@@ -62,7 +62,11 @@ const Lead = sequelize.define('Lead', {
     { fields: ['status'] },
     { fields: ['assigneeId'] },
     { fields: ['email'] },
+    { fields: ['phone'] },
     { fields: ['createdAt'] },
+    { fields: ['moveInDate'] },
+    // Composite: Agent query chủ yếu dùng status + assigneeId
+    { fields: ['assigneeId', 'status'] },
   ],
 });
 

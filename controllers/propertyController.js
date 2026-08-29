@@ -1,6 +1,7 @@
 const { Property, User } = require('../models');
 const { Op } = require('sequelize');
 const { deleteFromCloudinary } = require('../config/cloudinary');
+const cache = require('../utils/memCache');
 
 /**
  * Lọc bỏ các trường dữ liệu bảo mật nếu không đủ quyền:
@@ -11,10 +12,6 @@ const filterSensitivePropertyFields = (data, user) => {
   if (!data) return data;
   const userRole = (user?.role || '').toLowerCase();
   const isAdminOrManager = userRole === 'admin' || userRole === 'manager';
-
-  if (!user) {
-    delete data.commission;
-  }
 
   if (!isAdminOrManager) {
     delete data.exactAddress;
@@ -29,75 +26,85 @@ const filterSensitivePropertyFields = (data, user) => {
 // @access  Public
 const getProperties = async (req, res) => {
   try {
-    const { status, type, minPrice, maxPrice, featured, isPublished, search, page, limit } = req.query;
-    
+    const {
+      status, type, minPrice, maxPrice, featured,
+      isPublished, search, page, limit
+    } = req.query;
+
+    const isStaff = req.user && ['Admin', 'Manager', 'Agent'].includes(req.user.role);
+
+    // Mặc định phân trang: 12 BDS / trang cho public, 20 cho staff
+    const pageNum  = Math.max(1, parseInt(page, 10)  || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || (isStaff ? 20 : 12)));
+    const offset   = (pageNum - 1) * limitNum;
+
+    // --- Cache key ---
+    // Staff bỏ qua cache (dữ liệu thay đổi liên tục, cần real-time)
+    const cacheKey = !isStaff
+      ? `props:${JSON.stringify({ status, type, minPrice, maxPrice, featured, search, pageNum, limitNum })}`
+      : null;
+
+    if (cacheKey) {
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        res.set('X-Cache', 'HIT');
+        return res.json(cached);
+      }
+    }
+
     const where = {};
     if (status) where.status = status;
     if (type) where.type = type;
     if (featured === 'true') where.isFeatured = true;
 
-    // Kiểm tra quyền hạn:
-    // - Khách vãng lai / Public: BẮT BUỘC chỉ thấy tin đang bật đăng (isPublished: true)
-    // - Nhân viên (Admin/Manager/Agent): Thấy tất cả hoặc có thể lọc theo isPublished
-    const isStaff = req.user && ['Admin', 'Manager', 'Agent'].includes(req.user.role);
     if (!isStaff) {
       where.isPublished = true;
     } else if (isPublished !== undefined && isPublished !== 'All' && isPublished !== '') {
       where.isPublished = isPublished === 'true';
     }
-    
+
     if (minPrice || maxPrice) {
       where.price = {};
-      if (minPrice) where.price[Op.gte] = minPrice;
-      if (maxPrice) where.price[Op.lte] = maxPrice;
+      if (minPrice) where.price[Op.gte] = Number(minPrice);
+      if (maxPrice) where.price[Op.lte] = Number(maxPrice);
     }
 
-    if (search) {
+    if (search && search.trim()) {
+      const q = `%${search.trim()}%`;
       where[Op.or] = [
-        { title: { [Op.like]: `%${search}%` } },
-        { address: { [Op.like]: `%${search}%` } },
+        { title:   { [Op.like]: q } },
+        { address: { [Op.like]: q } },
       ];
     }
 
-    const queryOptions = {
+    const { count, rows } = await Property.findAndCountAll({
       where,
+      attributes: { exclude: isStaff ? [] : ['exactAddress', 'zaloGroupUrl'] },
       include: [
         { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone'] }
       ],
-      order: [['isFeatured', 'DESC'], ['createdAt', 'DESC']]
-    };
-
-    if (page && limit) {
-      const pageNum = parseInt(page, 10) || 1;
-      const limitNum = parseInt(limit, 10) || 10;
-      const offset = (pageNum - 1) * limitNum;
-
-      const { count, rows } = await Property.findAndCountAll({
-        ...queryOptions,
-        limit: limitNum,
-        offset,
-        distinct: true
-      });
-
-      const safeProperties = rows.map(p => {
-        return filterSensitivePropertyFields(p.toJSON(), req.user);
-      });
-
-      return res.json({
-        total: count,
-        totalPages: Math.ceil(count / limitNum),
-        currentPage: pageNum,
-        data: safeProperties
-      });
-    }
-
-    const properties = await Property.findAll(queryOptions);
-
-    const safeProperties = properties.map(p => {
-      return filterSensitivePropertyFields(p.toJSON(), req.user);
+      order: [['isFeatured', 'DESC'], ['createdAt', 'DESC']],
+      limit:    limitNum,
+      offset,
+      distinct: true,
     });
 
-    res.json(safeProperties);
+    const safeProperties = rows.map(p => filterSensitivePropertyFields(p.toJSON(), req.user));
+
+    const result = {
+      total:       count,
+      totalPages:  Math.ceil(count / limitNum),
+      currentPage: pageNum,
+      pageSize:    limitNum,
+      data:        safeProperties,
+    };
+
+    if (cacheKey) {
+      cache.set(cacheKey, result, 5 * 60 * 1000); // Cache 5 phút
+      res.set('X-Cache', 'MISS');
+    }
+
+    return res.json(result);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -108,12 +115,20 @@ const getProperties = async (req, res) => {
 // @access  Public
 const getFeaturedProperties = async (req, res) => {
   try {
+    const CACHE_KEY = 'props:featured';
+    const cached = cache.get(CACHE_KEY);
+    if (cached) {
+      res.set('X-Cache', 'HIT');
+      return res.json(cached);
+    }
+
     const properties = await Property.findAll({
       where: {
         isFeatured: true,
         isPublished: true,
         status: { [Op.ne]: 'Đã cho thuê' }
       },
+      attributes: { exclude: ['exactAddress', 'zaloGroupUrl'] },
       include: [
         { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone', 'role'] }
       ],
@@ -121,11 +136,11 @@ const getFeaturedProperties = async (req, res) => {
       order: [['createdAt', 'DESC']]
     });
 
-    const safeProperties = properties.map(p => {
-      return filterSensitivePropertyFields(p.toJSON(), req.user);
-    });
+    const safeProperties = properties.map(p => filterSensitivePropertyFields(p.toJSON(), req.user));
 
-    res.json(safeProperties);
+    cache.set(CACHE_KEY, safeProperties, 5 * 60 * 1000);
+    res.set('X-Cache', 'MISS');
+    return res.json(safeProperties);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -180,20 +195,32 @@ const uploadPropertyImages = async (req, res) => {
   }
 };
 
+const parseCleanNumber = (val) => {
+  if (val === undefined || val === null || val === '') return null;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  const str = String(val).trim();
+  if (/^\d+\.\d{1,2}$/.test(str)) {
+    const n = parseFloat(str);
+    return isNaN(n) ? 0 : n;
+  }
+  const digits = str.replace(/\D/g, '');
+  return digits ? parseInt(digits, 10) : 0;
+};
+
 // Helper to sanitize numeric inputs
 const sanitizePropertyData = (body) => {
   const data = { ...body };
   if (data.price !== undefined && data.price !== null) {
-    const p = Number(String(data.price).replace(/[^0-9.]/g, ''));
-    data.price = isNaN(p) ? 0 : p;
+    const p = parseCleanNumber(data.price);
+    data.price = p === null ? 0 : p;
   }
   if (data.deposit !== undefined && data.deposit !== null) {
-    const d = Number(String(data.deposit).replace(/[^0-9.]/g, ''));
-    data.deposit = isNaN(d) ? 0 : d;
+    const d = parseCleanNumber(data.deposit);
+    data.deposit = d === null ? 0 : d;
   }
   if (data.commission !== undefined && data.commission !== null) {
-    const c = Number(String(data.commission).replace(/[^0-9.]/g, ''));
-    data.commission = isNaN(c) ? 0 : c;
+    const c = parseCleanNumber(data.commission);
+    data.commission = c === null ? 0 : c;
   }
   if (data.area !== undefined && data.area !== null) {
     const a = Number(String(data.area).replace(/[^0-9.]/g, ''));
@@ -250,6 +277,8 @@ const createProperty = async (req, res) => {
       isPublished: cleanData.isPublished !== undefined ? Boolean(cleanData.isPublished) : true,
     };
     const property = await Property.create(data);
+    // Xóa cache khi có BDS mới
+    cache.delByPrefix('props:');
     res.status(201).json(property);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -270,6 +299,8 @@ const updateProperty = async (req, res) => {
         await deleteFromCloudinary(property.image);
       }
       const updatedProperty = await property.update(cleanData);
+      // Xóa cache khi cập nhật BDS
+      cache.delByPrefix('props:');
       res.json(updatedProperty);
     } else {
       res.status(404).json({ message: 'Property not found' });
@@ -290,6 +321,8 @@ const togglePublishProperty = async (req, res) => {
     }
     const newStatus = property.isPublished === false ? true : false;
     await property.update({ isPublished: newStatus });
+    // Xóa cache khi toggle publish
+    cache.delByPrefix('props:');
     res.json({
       success: true,
       message: newStatus ? 'Đã bật đăng tin BĐS thành công' : 'Đã tắt đăng tin BĐS thành công',
@@ -311,6 +344,8 @@ const deleteProperty = async (req, res) => {
       // Xóa ảnh trên Cloudinary trước khi xóa record
       await deleteFromCloudinary(property.image);
       await property.destroy();
+      // Xóa cache khi xóa BDS
+      cache.delByPrefix('props:');
       res.json({ message: 'Property removed' });
     } else {
       res.status(404).json({ message: 'Property not found' });

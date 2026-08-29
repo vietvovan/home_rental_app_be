@@ -133,6 +133,10 @@ const startServer = async () => {
     await sequelize.sync();
     console.log('✅ [Sequelize] Đồng bộ cấu trúc bảng thành công.');
 
+    // 4. Khởi động bộ nhắc nhở lịch hẹn (reminder scheduler)
+    const { startReminderScheduler } = require('./utils/reminderScheduler');
+    startReminderScheduler();
+
     // 4. Lắng nghe yêu cầu trên cổng PORT
     const server = app.listen(PORT, () => {
       console.log(`🚀 [Backend] Server đang chạy ở chế độ "${process.env.NODE_ENV || 'development'}" tại: http://localhost:${PORT}`);

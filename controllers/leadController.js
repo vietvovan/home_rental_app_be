@@ -1,4 +1,5 @@
 const { Lead, User } = require('../models');
+const cache = require('../utils/memCache');
 
 // @desc    Create a new lead (Public form submission)
 // @route   POST /api/leads
@@ -27,6 +28,8 @@ const createLead = async (req, res) => {
       assigneeId: assigneeId || null,
     });
 
+    // Xóa cache leads khi có lead mới
+    cache.delByPrefix('leads:');
     res.status(201).json(lead);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -38,50 +41,53 @@ const createLead = async (req, res) => {
 // @access  Private/Admin or Manager or Agent
 const getLeads = async (req, res) => {
   try {
-    const { status, assigneeId } = req.query;
-    
+    const { status, assigneeId, search } = req.query;
+
     const where = {};
     if (status) where.status = status;
     if (assigneeId) where.assigneeId = assigneeId;
 
-    // Agents can only see their assigned leads unless they are Admin/Manager
+    // Agents chỉ xem lead của mình
     if (req.user.role === 'Agent') {
       where.assigneeId = req.user.id;
     }
 
-    if (req.query.page && req.query.limit) {
-      const pageNum = parseInt(req.query.page, 10) || 1;
-      const limitNum = parseInt(req.query.limit, 10) || 10;
-      const offset = (pageNum - 1) * limitNum;
+    // Phân trang mặc định — bắt buộc để tránh tải toàn bộ DB
+    const pageNum  = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const offset   = (pageNum - 1) * limitNum;
 
-      const { count, rows } = await Lead.findAndCountAll({
-        where,
-        include: [
-          { model: User, as: 'assignee', attributes: ['id', 'name', 'email'] }
-        ],
-        order: [['createdAt', 'DESC']],
-        limit: limitNum,
-        offset,
-        distinct: true
-      });
-
-      return res.json({
-        total: count,
-        totalPages: Math.ceil(count / limitNum),
-        currentPage: pageNum,
-        data: rows
-      });
+    // Cache key theo tất cả params filter
+    const cacheKey = `leads:${req.user.id}:${JSON.stringify({ status, assigneeId, search, pageNum, limitNum })}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      res.set('X-Cache', 'HIT');
+      return res.json(cached);
     }
 
-    const leads = await Lead.findAll({
+    const { count, rows } = await Lead.findAndCountAll({
       where,
       include: [
         { model: User, as: 'assignee', attributes: ['id', 'name', 'email'] }
       ],
-      order: [['createdAt', 'DESC']]
+      order: [['createdAt', 'DESC']],
+      limit: limitNum,
+      offset,
+      distinct: true
     });
 
-    res.json(leads);
+    const result = {
+      total:       count,
+      totalPages:  Math.ceil(count / limitNum),
+      currentPage: pageNum,
+      pageSize:    limitNum,
+      data:        rows
+    };
+
+    // Cache 2 phút cho lead (dữ liệu thay đổi thường xuyên hơn BDS)
+    cache.set(cacheKey, result, 2 * 60 * 1000);
+    res.set('X-Cache', 'MISS');
+    return res.json(result);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -146,6 +152,8 @@ const updateLead = async (req, res) => {
       }
 
       const updatedLead = await lead.update(req.body);
+      // Xóa cache leads khi cập nhật
+      cache.delByPrefix('leads:');
       res.json(updatedLead);
     } else {
       res.status(404).json({ message: 'Lead not found' });
@@ -172,6 +180,8 @@ const deleteLead = async (req, res) => {
     }
 
     await lead.destroy();
+    // Xóa cache leads khi xóa
+    cache.delByPrefix('leads:');
     res.json({ message: 'Lead removed' });
   } catch (error) {
     res.status(500).json({ message: error.message });
