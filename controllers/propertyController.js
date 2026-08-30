@@ -5,7 +5,7 @@ const cache = require('../utils/memCache');
 
 /**
  * Lọc bỏ các trường dữ liệu bảo mật nếu không đủ quyền:
- * - commission: Ẩn với khách vãng lai chưa đăng nhập
+ * - commission: ẨN nếu không phải vai trò Admin hoặc Manager
  * - exactAddress, zaloGroupUrl: ẨN TUYỆT ĐỐI nếu không phải vai trò Admin hoặc Manager
  */
 const filterSensitivePropertyFields = (data, user) => {
@@ -16,6 +16,7 @@ const filterSensitivePropertyFields = (data, user) => {
   if (!isAdminOrManager) {
     delete data.exactAddress;
     delete data.zaloGroupUrl;
+    delete data.commission;
   }
 
   return data;
@@ -31,6 +32,8 @@ const getProperties = async (req, res) => {
       isPublished, search, page, limit
     } = req.query;
 
+    const userRole = (req.user?.role || '').toLowerCase();
+    const isAdminOrManager = userRole === 'admin' || userRole === 'manager';
     const isStaff = req.user && ['Admin', 'Manager', 'Agent'].includes(req.user.role);
 
     // Mặc định phân trang: 12 BDS / trang cho public, 20 cho staff
@@ -39,7 +42,7 @@ const getProperties = async (req, res) => {
     const offset   = (pageNum - 1) * limitNum;
 
     // --- Cache key ---
-    // Staff bỏ qua cache (dữ liệu thay đổi liên tục, cần real-time)
+    // Staff/Admin bỏ qua cache (dữ liệu thay đổi liên tục, cần real-time)
     const cacheKey = !isStaff
       ? `props:${JSON.stringify({ status, type, minPrice, maxPrice, featured, search, pageNum, limitNum })}`
       : null;
@@ -79,7 +82,7 @@ const getProperties = async (req, res) => {
 
     const { count, rows } = await Property.findAndCountAll({
       where,
-      attributes: { exclude: isStaff ? [] : ['exactAddress', 'zaloGroupUrl'] },
+      attributes: { exclude: isAdminOrManager ? [] : ['exactAddress', 'zaloGroupUrl', 'commission'] },
       include: [
         { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone'] }
       ],
@@ -115,11 +118,16 @@ const getProperties = async (req, res) => {
 // @access  Public
 const getFeaturedProperties = async (req, res) => {
   try {
-    const CACHE_KEY = 'props:featured';
-    const cached = cache.get(CACHE_KEY);
-    if (cached) {
-      res.set('X-Cache', 'HIT');
-      return res.json(cached);
+    const userRole = (req.user?.role || '').toLowerCase();
+    const isAdminOrManager = userRole === 'admin' || userRole === 'manager';
+    const CACHE_KEY = !isAdminOrManager ? 'props:featured' : null;
+
+    if (CACHE_KEY) {
+      const cached = cache.get(CACHE_KEY);
+      if (cached) {
+        res.set('X-Cache', 'HIT');
+        return res.json(cached);
+      }
     }
 
     const properties = await Property.findAll({
@@ -128,7 +136,7 @@ const getFeaturedProperties = async (req, res) => {
         isPublished: true,
         status: { [Op.ne]: 'Đã cho thuê' }
       },
-      attributes: { exclude: ['exactAddress', 'zaloGroupUrl'] },
+      attributes: { exclude: isAdminOrManager ? [] : ['exactAddress', 'zaloGroupUrl', 'commission'] },
       include: [
         { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone', 'role'] }
       ],
@@ -138,8 +146,10 @@ const getFeaturedProperties = async (req, res) => {
 
     const safeProperties = properties.map(p => filterSensitivePropertyFields(p.toJSON(), req.user));
 
-    cache.set(CACHE_KEY, safeProperties, 5 * 60 * 1000);
-    res.set('X-Cache', 'MISS');
+    if (CACHE_KEY) {
+      cache.set(CACHE_KEY, safeProperties, 5 * 60 * 1000);
+      res.set('X-Cache', 'MISS');
+    }
     return res.json(safeProperties);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -269,8 +279,13 @@ const sanitizePropertyData = (body) => {
 const createProperty = async (req, res) => {
   try {
     const cleanData = sanitizePropertyData(req.body);
+    const userRole = (req.user?.role || '').toLowerCase();
+    const isAdmin = userRole === 'admin';
+
     const data = {
       ...cleanData,
+      // Chỉ role Admin mới được phép gán BĐS Nổi Bật
+      isFeatured: isAdmin ? Boolean(cleanData.isFeatured) : false,
       // Tự động gán agentId là người đăng tin nếu không truyền
       agentId: cleanData.agentId || (req.user ? req.user.id : null),
       // Mặc định khi thêm mới BĐS thì bật tính năng đăng tin
@@ -294,6 +309,14 @@ const updateProperty = async (req, res) => {
 
     if (property) {
       const cleanData = sanitizePropertyData(req.body);
+      const userRole = (req.user?.role || '').toLowerCase();
+      const isAdmin = userRole === 'admin';
+
+      // Nếu không phải Admin thì không được thay đổi trạng thái BĐS Nổi Bật
+      if (!isAdmin && cleanData.isFeatured !== undefined) {
+        delete cleanData.isFeatured;
+      }
+
       // Nếu ảnh bìa được thay thế → xóa ảnh cũ trên Cloudinary
       if (cleanData.image && cleanData.image !== property.image) {
         await deleteFromCloudinary(property.image);
