@@ -1,4 +1,4 @@
-const { Property, User } = require('../models');
+const { Property, User, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const { deleteFromCloudinary } = require('../config/cloudinary');
 const cache = require('../utils/memCache');
@@ -33,82 +33,60 @@ const normalizeText = (str) => {
 };
 
 /**
- * Xây dựng điều kiện lọc địa chỉ chính xác và thông minh
- * - province: Lọc theo Tỉnh/Thành (kèm từ đồng nghĩa HCM, HN, ĐN, HP...)
- * - district: Lọc theo Quận/Huyện (kèm các biến thể Quận 1, Q1, Q.1...)
- * - search: Từ khóa địa chỉ do người dùng nhập (hỗ trợ có dấu / không dấu / hoa / thường)
+ * Xây dựng điều kiện lọc địa chỉ thông minh - Hỗ trợ:
+ * - Không phân biệt dấu tiếng Việt: "lac long quan" khớp "Lạc Long Quân"
+ * - Không phân biệt chữ hoa/thường: "CAU GIAY" khớp "Cầu Giấy"
+ *
+ * Chiến lược:
+ * - Tìm trong cột `address` (raw): khớp khi người dùng gõ đúng dấu
+ * - Tìm trong cột `normalizedAddress` (không dấu): khớp khi gõ không dấu
+ *   normalizedAddress được tự động sinh khi lưu/sửa BĐS và được backfill khi server khởi động
  */
 const buildAddressConditions = ({ search, province, district, isStaff }) => {
   const andConditions = [];
 
-  // 1. Lọc theo Tỉnh / Thành phố (hỗ trợ cả có dấu và không dấu)
+  // Helper: tạo OR giữa raw address (có dấu) và normalizedAddress (không dấu, không hoa thường)
+  const addressLike = (rawKeyword) => {
+    const normKeyword = normalizeText(rawKeyword); // chuyển sang không dấu, viết thường
+    const conditions = [
+      { address: { [Op.like]: `%${rawKeyword}%` } },           // khớp địa chỉ gốc
+      { normalizedAddress: { [Op.like]: `%${normKeyword}%` } } // khớp địa chỉ không dấu
+    ];
+    return { [Op.or]: conditions };
+  };
+
+  // 1. Lọc theo Tỉnh / Thành phố
   if (province && typeof province === 'string' && province.trim() && province !== 'Tất cả tỉnh/thành') {
     const prov = province.trim();
     const normProv = normalizeText(prov);
-    if (/hồ chí minh|tp\.?hcm|hcm|sài gòn|sai gon/i.test(normProv)) {
-      andConditions.push({
-        [Op.or]: [
-          { address: { [Op.like]: '%Hồ Chí Minh%' } },
-          { address: { [Op.like]: '%TP.HCM%' } },
-          { address: { [Op.like]: '%TP. Hồ Chí Minh%' } },
-          { normalizedAddress: { [Op.like]: '%ho chi minh%' } },
-          { normalizedAddress: { [Op.like]: '%tp.hcm%' } },
-          { normalizedAddress: { [Op.like]: '%hcm%' } },
-          { normalizedAddress: { [Op.like]: '%sai gon%' } },
-        ]
-      });
-    } else if (/hà nội|hn|ha noi/i.test(normProv)) {
-      andConditions.push({
-        [Op.or]: [
-          { address: { [Op.like]: '%Hà Nội%' } },
-          { address: { [Op.like]: '%HN%' } },
-          { normalizedAddress: { [Op.like]: '%ha noi%' } },
-          { normalizedAddress: { [Op.like]: '%hn%' } },
-        ]
-      });
-    } else if (/đà nẵng|dn|da nang/i.test(normProv)) {
-      andConditions.push({
-        [Op.or]: [
-          { address: { [Op.like]: '%Đà Nẵng%' } },
-          { address: { [Op.like]: '%DN%' } },
-          { normalizedAddress: { [Op.like]: '%da nang%' } },
-          { normalizedAddress: { [Op.like]: '%dn%' } },
-        ]
-      });
-    } else if (/hải phòng|hp|hai phong/i.test(normProv)) {
-      andConditions.push({
-        [Op.or]: [
-          { address: { [Op.like]: '%Hải Phòng%' } },
-          { address: { [Op.like]: '%HP%' } },
-          { normalizedAddress: { [Op.like]: '%hai phong%' } },
-          { normalizedAddress: { [Op.like]: '%hp%' } },
-        ]
-      });
-    } else if (/hưng yên|hy|hung yen/i.test(normProv)) {
-      andConditions.push({
-        [Op.or]: [
-          { address: { [Op.like]: '%Hưng Yên%' } },
-          { address: { [Op.like]: '%HY%' } },
-          { normalizedAddress: { [Op.like]: '%hung yen%' } },
-          { normalizedAddress: { [Op.like]: '%hy%' } },
-        ]
-      });
+    let keywords = [];
+
+    if (/ho chi minh|tp\.?hcm|hcm|sai gon/.test(normProv)) {
+      keywords = ['Hồ Chí Minh', 'TP.HCM', 'TP. Hồ Chí Minh', 'Sài Gòn'];
+    } else if (/ha noi|^hn$/.test(normProv)) {
+      keywords = ['Hà Nội'];
+    } else if (/da nang|^dn$/.test(normProv)) {
+      keywords = ['Đà Nẵng'];
+    } else if (/hai phong|^hp$/.test(normProv)) {
+      keywords = ['Hải Phòng'];
+    } else if (/hung yen|^hy$/.test(normProv)) {
+      keywords = ['Hưng Yên'];
     } else {
-      andConditions.push({
-        [Op.or]: [
-          { address: { [Op.like]: `%${prov}%` } },
-          { normalizedAddress: { [Op.like]: `%${normProv}%` } },
-        ]
-      });
+      keywords = [prov];
     }
+
+    andConditions.push({
+      [Op.or]: keywords.flatMap(k => [
+        { address: { [Op.like]: `%${k}%` } },
+        { normalizedAddress: { [Op.like]: `%${normalizeText(k)}%` } }
+      ])
+    });
   }
 
-  // 2. Lọc theo Quận / Huyện (hỗ trợ cả có dấu và không dấu)
+  // 2. Lọc theo Quận / Huyện
   if (district && typeof district === 'string' && district.trim() && district !== 'Tất cả quận/huyện') {
     const rawDist = district.trim();
-    const normDist = normalizeText(rawDist);
     const cleanDist = rawDist.replace(/^(Quận|Huyện|Thị xã|Thành phố|TP\.)\s+/i, '').trim();
-    const cleanNormDist = normalizeText(cleanDist);
     const numMatch = rawDist.match(/^(?:quận|quan|q\.?|huyện|huyen)\s*(\d{1,2})$/i);
 
     if (numMatch) {
@@ -125,14 +103,17 @@ const buildAddressConditions = ({ search, province, district, isStaff }) => {
         ]
       });
     } else {
-      andConditions.push({
-        [Op.or]: [
-          { address: { [Op.like]: `%${rawDist}%` } },
+      const orConditions = [
+        { address: { [Op.like]: `%${rawDist}%` } },
+        { normalizedAddress: { [Op.like]: `%${normalizeText(rawDist)}%` } }
+      ];
+      if (cleanDist && cleanDist !== rawDist) {
+        orConditions.push(
           { address: { [Op.like]: `%${cleanDist}%` } },
-          { normalizedAddress: { [Op.like]: `%${normDist}%` } },
-          { normalizedAddress: { [Op.like]: `%${cleanNormDist}%` } },
-        ]
-      });
+          { normalizedAddress: { [Op.like]: `%${normalizeText(cleanDist)}%` } }
+        );
+      }
+      andConditions.push({ [Op.or]: orConditions });
     }
   }
 
@@ -149,12 +130,13 @@ const buildAddressConditions = ({ search, province, district, isStaff }) => {
     ];
 
     if (cleanRaw && cleanRaw !== rawSearch) {
-      searchOr.push({ address: { [Op.like]: `%${cleanRaw}%` } });
-    }
-    if (cleanNorm && cleanNorm !== normSearch) {
-      searchOr.push({ normalizedAddress: { [Op.like]: `%${cleanNorm}%` } });
+      searchOr.push(
+        { address: { [Op.like]: `%${cleanRaw}%` } },
+        { normalizedAddress: { [Op.like]: `%${cleanNorm}%` } }
+      );
     }
 
+    // Xử lý quận đánh số
     const numMatch = rawSearch.match(/^(?:quận|quan|q\.?|huyện|huyen)\s*(\d{1,2})$/i);
     if (numMatch) {
       const num = parseInt(numMatch[1], 10);
@@ -168,51 +150,17 @@ const buildAddressConditions = ({ search, province, district, isStaff }) => {
       );
     }
 
-    // Từ đồng nghĩa tỉnh/thành nếu người dùng gõ tắt
-    if (/^(?:hcm|tphcm|tp\.hcm|sài gòn|sai gon)$/i.test(normSearch)) {
-      searchOr.push(
-        { address: { [Op.like]: '%Hồ Chí Minh%' } },
-        { address: { [Op.like]: '%TP.HCM%' } },
-        { address: { [Op.like]: '%HCM%' } },
-        { normalizedAddress: { [Op.like]: '%ho chi minh%' } },
-        { normalizedAddress: { [Op.like]: '%tp.hcm%' } },
-        { normalizedAddress: { [Op.like]: '%hcm%' } },
-        { normalizedAddress: { [Op.like]: '%sai gon%' } }
-      );
-    } else if (/^(?:hn|hà nội|ha noi)$/i.test(normSearch)) {
-      searchOr.push(
-        { address: { [Op.like]: '%Hà Nội%' } },
-        { address: { [Op.like]: '%HN%' } },
-        { normalizedAddress: { [Op.like]: '%ha noi%' } },
-        { normalizedAddress: { [Op.like]: '%hn%' } }
-      );
-    } else if (/^(?:dn|đà nẵng|da nang)$/i.test(normSearch)) {
-      searchOr.push(
-        { address: { [Op.like]: '%Đà Nẵng%' } },
-        { address: { [Op.like]: '%DN%' } },
-        { normalizedAddress: { [Op.like]: '%da nang%' } },
-        { normalizedAddress: { [Op.like]: '%dn%' } }
-      );
-    } else if (/^(?:hp|hải phòng|hai phong)$/i.test(normSearch)) {
-      searchOr.push(
-        { address: { [Op.like]: '%Hải Phòng%' } },
-        { address: { [Op.like]: '%HP%' } },
-        { normalizedAddress: { [Op.like]: '%hai phong%' } },
-        { normalizedAddress: { [Op.like]: '%hp%' } }
-      );
-    }
-
-    // Nếu là nhân viên / admin thì cho phép tìm thêm trong exactAddress & normalizedExactAddress
+    // Tìm thêm trong exactAddress cho Staff/Admin
     if (isStaff) {
       searchOr.push(
         { exactAddress: { [Op.like]: `%${rawSearch}%` } },
         { normalizedExactAddress: { [Op.like]: `%${normSearch}%` } }
       );
       if (cleanRaw && cleanRaw !== rawSearch) {
-        searchOr.push({ exactAddress: { [Op.like]: `%${cleanRaw}%` } });
-      }
-      if (cleanNorm && cleanNorm !== normSearch) {
-        searchOr.push({ normalizedExactAddress: { [Op.like]: `%${cleanNorm}%` } });
+        searchOr.push(
+          { exactAddress: { [Op.like]: `%${cleanRaw}%` } },
+          { normalizedExactAddress: { [Op.like]: `%${cleanNorm}%` } }
+        );
       }
     }
 
@@ -627,6 +575,40 @@ const downloadImageProxy = async (req, res) => {
   }
 };
 
+// @desc    Backfill normalizedAddress cho tất cả BĐS (dùng khi mới thêm cột)
+// @route   POST /api/properties/admin/backfill-address
+// @access  Private/Admin
+const backfillNormalizedAddress = async (req, res) => {
+  try {
+    const [tablesResult] = await sequelize.query('SHOW TABLES');
+    const propTable = tablesResult.map(r => Object.values(r)[0]).find(t => t.toLowerCase() === 'properties');
+    if (!propTable) return res.status(404).json({ message: 'Bảng Properties không tồn tại' });
+
+    const [props] = await sequelize.query(
+      `SELECT id, address, exactAddress FROM \`${propTable}\` WHERE normalizedAddress IS NULL OR normalizedAddress = ''`
+    );
+
+    if (props.length === 0) {
+      return res.json({ message: 'Tất cả BĐS đã có normalizedAddress', updated: 0 });
+    }
+
+    let updated = 0;
+    for (const row of props) {
+      const normAddr = normalizeText(row.address || '');
+      const normExact = normalizeText(row.exactAddress || '');
+      await sequelize.query(
+        `UPDATE \`${propTable}\` SET normalizedAddress = :normAddr, normalizedExactAddress = :normExact WHERE id = :id`,
+        { replacements: { normAddr, normExact, id: row.id } }
+      );
+      updated++;
+    }
+
+    res.json({ message: `Đã backfill normalizedAddress cho ${updated} BĐS`, updated });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getProperties,
   getFeaturedProperties,
@@ -637,4 +619,5 @@ module.exports = {
   togglePublishProperty,
   deleteProperty,
   downloadImageProxy,
+  backfillNormalizedAddress,
 };

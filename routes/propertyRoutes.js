@@ -9,7 +9,8 @@ const {
   updateProperty,
   togglePublishProperty,
   deleteProperty,
-  downloadImageProxy
+  downloadImageProxy,
+  backfillNormalizedAddress,
 } = require('../controllers/propertyController');
 const { uploadProperty } = require('../config/cloudinary');
 const { protect, optionalProtect, adminOrManager } = require('../middlewares/authMiddleware');
@@ -24,6 +25,7 @@ router.get('/:id', optionalProtect, getPropertyById);
 // Upload tối đa 20 ảnh cùng lúc lên Cloudinary
 router.post('/upload-images', protect, adminOrManager, uploadProperty.array('images', 20), uploadPropertyImages);
 router.post('/admin', protect, adminOrManager, createProperty);
+router.post('/admin/backfill-address', protect, adminOrManager, backfillNormalizedAddress);
 router.put('/admin/:id', protect, adminOrManager, updateProperty);
 router.patch('/admin/:id/toggle-publish', protect, adminOrManager, togglePublishProperty);
 router.delete('/admin/:id', protect, adminOrManager, deleteProperty);

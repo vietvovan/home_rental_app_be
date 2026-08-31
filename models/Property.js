@@ -1,3 +1,6 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+
 const normalizeText = (str) => {
   if (!str) return '';
   return str
