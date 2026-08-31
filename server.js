@@ -118,14 +118,31 @@ process.on('unhandledRejection', (reason, promise) => {
 
 const PORT = parseInt(process.env.PORT, 10) || 5000;
 
-// Khởi động server sau khi xác thực và đồng bộ cơ sở dữ liệu MySQL
-const startServer = async () => {
+// Lắng nghe port NGAY LẬP TỨC để Render / Railway / hosting detect được port
+// DB sẽ được khởi tạo bất đồng bộ sau khi server đã bind
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 [Backend] Server đang chạy ở chế độ "${process.env.NODE_ENV || 'development'}" tại: http://0.0.0.0:${PORT}`);
+  console.log(`📡 [API Endpoint] http://0.0.0.0:${PORT}/api`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ [Port Error] Cổng ${PORT} đã bị sử dụng bởi tiến trình khác.`);
+    console.error(`👉 Hãy chạy lệnh sau để giải phóng cổng: npx kill-port ${PORT}`);
+  } else {
+    console.error('❌ [Server Error]', err.message);
+  }
+  process.exit(1);
+});
+
+// Khởi tạo DB và migrate NGAY SAU KHI port đã được bind
+const initDatabase = async () => {
   try {
     // 1. Kiểm tra kết nối đến MySQL
     await sequelize.authenticate();
     console.log('✅ [MySQL] Kết nối cơ sở dữ liệu MySQL thành công!');
 
-    // 2. Tự động kiểm tra, thêm cột mới (isPublished, isFeatured, exactAddress, ...) và đổi ENUM sang VARCHAR
+    // 2. Tự động kiểm tra, thêm cột mới và đổi ENUM sang VARCHAR
     const autoMigrate = require('./config/migrate');
     await autoMigrate();
 
@@ -137,46 +154,29 @@ const startServer = async () => {
     const { startReminderScheduler } = require('./utils/reminderScheduler');
     startReminderScheduler();
 
-    // 4. Lắng nghe yêu cầu trên cổng PORT
-    const server = app.listen(PORT, () => {
-      console.log(`🚀 [Backend] Server đang chạy ở chế độ "${process.env.NODE_ENV || 'development'}" tại: http://localhost:${PORT}`);
-      console.log(`📡 [API Endpoint] http://localhost:${PORT}/api`);
-    });
-
-    // Xử lý đóng kết nối an toàn khi server nhận tín hiệu dừng (Graceful Shutdown)
-    const gracefulShutdown = (signal) => {
-      console.log(`\n🛑 [Server] Nhận tín hiệu ${signal}. Đang đóng kết nối an toàn...`);
-      server.close(async () => {
-        try {
-          await sequelize.close();
-          console.log('🔒 [MySQL] Đã đóng toàn bộ kết nối cơ sở dữ liệu.');
-        } catch (dbErr) {
-          console.error('⚠️ [MySQL] Lỗi khi đóng DB:', dbErr.message);
-        }
-        process.exit(0);
-      });
-    };
-
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-    // Xử lý lỗi cổng đã bị chiếm (EADDRINUSE)
-    server.on('error', (err) => {
-      if (err.code === 'EADDRINUSE') {
-        console.error(`❌ [Port Error] Cổng ${PORT} đã bị sử dụng bởi tiến trình khác.`);
-        console.error(`👉 Hãy chạy lệnh sau để giải phóng cổng: npx kill-port ${PORT}`);
-        console.error(`👉 Hoặc đổi PORT trong file .env sang cổng khác (ví dụ PORT=5001)`);
-      } else {
-        console.error('❌ [Server Error]', err.message);
-      }
-      process.exit(1);
-    });
-
+    console.log('✅ [Backend] Khởi tạo hoàn tất, sẵn sàng phục vụ requests.');
   } catch (err) {
     console.error('❌ [MySQL Error] Không thể kết nối đến cơ sở dữ liệu MySQL:', err.message);
     console.error('👉 Vui lòng kiểm tra lại thông tin cấu hình trong file .env (Host, Port, User, Password, DB Name)');
-    process.exit(1);
+    // Không process.exit() để server vẫn còn chạy (healthcheck endpoint vẫn respond)
   }
 };
 
-startServer();
+// Xử lý đóng kết nối an toàn khi server nhận tín hiệu dừng (Graceful Shutdown)
+const gracefulShutdown = (signal) => {
+  console.log(`\n🛑 [Server] Nhận tín hiệu ${signal}. Đang đóng kết nối an toàn...`);
+  server.close(async () => {
+    try {
+      await sequelize.close();
+      console.log('🔒 [MySQL] Đã đóng toàn bộ kết nối cơ sở dữ liệu.');
+    } catch (dbErr) {
+      console.error('⚠️ [MySQL] Lỗi khi đóng DB:', dbErr.message);
+    }
+    process.exit(0);
+  });
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+initDatabase();
