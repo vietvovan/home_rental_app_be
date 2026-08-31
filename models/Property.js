@@ -213,6 +213,7 @@ const Property = sequelize.define('Property', {
   tableName: 'Properties',
   timestamps: true,
   indexes: [
+    // Index cơ bản
     { fields: ['status'] },
     { fields: ['isFeatured'] },
     { fields: ['isPublished'] },
@@ -220,15 +221,15 @@ const Property = sequelize.define('Property', {
     { fields: ['price'] },
     { fields: ['agentId'] },
     { fields: ['createdAt'] },
+    // Composite index chính cho query public (isPublished là filter đầu tiên luôn)
+    { fields: ['isPublished', 'isFeatured', 'createdAt'] },
+    { fields: ['isPublished', 'status', 'createdAt'] },
+    { fields: ['isPublished', 'type', 'price'] },
+    // Index cho tìm kiếm địa chỉ (LIKE search prefix - partial index)
+    { fields: ['normalizedAddress'] },
     // Index bổ sung cho các trường filter phổ biến
     { fields: ['beds'] },
-    { fields: ['alleyType'] },
-    { fields: ['maxOccupants'] },
-    { fields: ['maxVehicles'] },
     { fields: ['availability'] },
-    // Composite index cho query public (chủ yếu: đăng tin + nổi bật + giá)
-    { fields: ['isPublished', 'isFeatured', 'price'] },
-    { fields: ['isPublished', 'status'] },
   ],
   hooks: {
     beforeValidate: (property) => {

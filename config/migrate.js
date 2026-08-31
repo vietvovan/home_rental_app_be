@@ -116,6 +116,17 @@ async function autoMigrate() {
       } catch (err) {
         console.warn(`⚠️ [AutoMigrate] Cập nhật ${propTable}.type:`, err.message);
       }
+
+      // Tạo index cho normalizedAddress nếu chưa có (tăng tốc LIKE search)
+      try {
+        const [idxRows] = await sequelize.query(`SHOW INDEX FROM \`${propTable}\` WHERE Key_name = 'idx_normalized_address'`);
+        if (idxRows.length === 0) {
+          await sequelize.query(`CREATE INDEX \`idx_normalized_address\` ON \`${propTable}\` (\`normalizedAddress\`(100))`);
+          console.log(`✅ [AutoMigrate] Đã tạo index idx_normalized_address cho ${propTable}`);
+        }
+      } catch (err) {
+        console.warn(`⚠️ [AutoMigrate] Tạo index normalizedAddress:`, err.message);
+      }
     }
 
     // 2. Kiểm tra bảng Leads

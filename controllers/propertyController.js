@@ -25,150 +25,140 @@ const filterSensitivePropertyFields = (data, user) => {
 const normalizeText = (str) => {
   if (!str) return '';
   return str
-    .toLowerCase()
+    .replace(/[đĐ]/g, (c) => c === 'đ' ? 'd' : 'D') // Phải xử lý đ/Đ TRƯỚC khi NFD
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[đĐ]/g, 'd')
+    .replace(/[\u0300-\u036f]/g, '') // Xóa toàn bộ combining diacritics
+    .toLowerCase()
     .trim();
 };
 
 /**
- * Xây dựng điều kiện lọc địa chỉ thông minh - Hỗ trợ:
- * - Không phân biệt dấu tiếng Việt: "lac long quan" khớp "Lạc Long Quân"
- * - Không phân biệt chữ hoa/thường: "CAU GIAY" khớp "Cầu Giấy"
- *
- * Chiến lược:
- * - Tìm trong cột `address` (raw): khớp khi người dùng gõ đúng dấu
- * - Tìm trong cột `normalizedAddress` (không dấu): khớp khi gõ không dấu
- *   normalizedAddress được tự động sinh khi lưu/sửa BĐS và được backfill khi server khởi động
+ * Xây dựng điều kiện lọc địa chỉ - Tối ưu hiệu suất:
+ * - Ưu tiên tìm trong `normalizedAddress` (1 LIKE, có thể dùng index)
+ * - Fallback tìm trong `address` gốc (nếu normalizedAddress chưa được backfill / NULL)
+ * - normalizedAddress cover cả có dấu/không dấu/hoa/thường
  */
 const buildAddressConditions = ({ search, province, district, isStaff }) => {
   const andConditions = [];
 
-  // Helper: tạo OR giữa raw address (có dấu) và normalizedAddress (không dấu, không hoa thường)
-  const addressLike = (rawKeyword) => {
-    const normKeyword = normalizeText(rawKeyword); // chuyển sang không dấu, viết thường
-    const conditions = [
-      { address: { [Op.like]: `%${rawKeyword}%` } },           // khớp địa chỉ gốc
-      { normalizedAddress: { [Op.like]: `%${normKeyword}%` } } // khớp địa chỉ không dấu
+  // Helper: tìm trong normalizedAddress (có dấu/không dấu) VÀ fallback address gốc
+  // normalizedAddress IS NULL xảy ra khi chưa backfill, fallback LIKE trên address đảm bảo không bỏ sót
+  const addrLike = (rawKeyword) => {
+    const norm = normalizeText(rawKeyword);
+    return [
+      { normalizedAddress: { [Op.like]: `%${norm}%` } },
+      // Fallback: khi normalizedAddress chưa có dữ liệu, vẫn tìm được trong address gốc
+      {
+        [Op.and]: [
+          { normalizedAddress: null },
+          { address: { [Op.like]: `%${rawKeyword}%` } }
+        ]
+      }
     ];
-    return { [Op.or]: conditions };
   };
 
   // 1. Lọc theo Tỉnh / Thành phố
-  if (province && typeof province === 'string' && province.trim() && province !== 'Tất cả tỉnh/thành') {
-    const prov = province.trim();
-    const normProv = normalizeText(prov);
-    let keywords = [];
+  if (province && typeof province === 'string' && province.trim() && province !== 'T\u1ea5t c\u1ea3 t\u1ec9nh/th\u00e0nh') {
+    const normProv = normalizeText(province.trim());
+    let rawKeywords;
 
     if (/ho chi minh|tp\.?hcm|hcm|sai gon/.test(normProv)) {
-      keywords = ['Hồ Chí Minh', 'TP.HCM', 'TP. Hồ Chí Minh', 'Sài Gòn'];
+      rawKeywords = ['Hồ Chí Minh', 'TP.HCM', 'Sài Gòn'];
     } else if (/ha noi|^hn$/.test(normProv)) {
-      keywords = ['Hà Nội'];
+      rawKeywords = ['Hà Nội'];
     } else if (/da nang|^dn$/.test(normProv)) {
-      keywords = ['Đà Nẵng'];
+      rawKeywords = ['Đà Nẵng'];
     } else if (/hai phong|^hp$/.test(normProv)) {
-      keywords = ['Hải Phòng'];
+      rawKeywords = ['Hải Phòng'];
     } else if (/hung yen|^hy$/.test(normProv)) {
-      keywords = ['Hưng Yên'];
+      rawKeywords = ['Hưng Yên'];
     } else {
-      keywords = [prov];
+      rawKeywords = [province.trim()];
     }
 
     andConditions.push({
-      [Op.or]: keywords.flatMap(k => [
-        { address: { [Op.like]: `%${k}%` } },
-        { normalizedAddress: { [Op.like]: `%${normalizeText(k)}%` } }
-      ])
+      [Op.or]: rawKeywords.flatMap(k => addrLike(k))
     });
   }
 
   // 2. Lọc theo Quận / Huyện
   if (district && typeof district === 'string' && district.trim() && district !== 'Tất cả quận/huyện') {
     const rawDist = district.trim();
-    const cleanDist = rawDist.replace(/^(Quận|Huyện|Thị xã|Thành phố|TP\.)\s+/i, '').trim();
     const numMatch = rawDist.match(/^(?:quận|quan|q\.?|huyện|huyen)\s*(\d{1,2})$/i);
 
     if (numMatch) {
       const num = parseInt(numMatch[1], 10);
       andConditions.push({
         [Op.or]: [
-          { address: { [Op.like]: `%Quận ${num}%` } },
-          { address: { [Op.like]: `%Q.${num}%` } },
-          { address: { [Op.like]: `%Q${num}%` } },
           { normalizedAddress: { [Op.like]: `%quan ${num}%` } },
-          { normalizedAddress: { [Op.like]: `%q.${num}%` } },
-          { normalizedAddress: { [Op.like]: `%q${num}%` } },
           { normalizedAddress: { [Op.like]: `%quan 0${num}%` } },
+          // Fallback cho records chưa backfill
+          { [Op.and]: [{ normalizedAddress: null }, { address: { [Op.like]: `%Quận ${num}%` } }] },
+          { [Op.and]: [{ normalizedAddress: null }, { address: { [Op.like]: `%Q.${num}%` } }] },
         ]
       });
     } else {
-      const orConditions = [
-        { address: { [Op.like]: `%${rawDist}%` } },
-        { normalizedAddress: { [Op.like]: `%${normalizeText(rawDist)}%` } }
+      const normDist = normalizeText(rawDist);
+      const cleanNorm = normDist.replace(/^(quan|huyen|thi xa|thanh pho|tp\.)\s+/i, '').trim();
+      const cleanRaw = rawDist.replace(/^(Quận|Huyện|Thị xã|Thành phố|TP\.)\s+/i, '').trim();
+
+      const orConds = [
+        { normalizedAddress: { [Op.like]: `%${normDist}%` } },
+        // Fallback
+        { [Op.and]: [{ normalizedAddress: null }, { address: { [Op.like]: `%${rawDist}%` } }] }
       ];
-      if (cleanDist && cleanDist !== rawDist) {
-        orConditions.push(
-          { address: { [Op.like]: `%${cleanDist}%` } },
-          { normalizedAddress: { [Op.like]: `%${normalizeText(cleanDist)}%` } }
-        );
+      if (cleanNorm && cleanNorm !== normDist) {
+        orConds.push({ normalizedAddress: { [Op.like]: `%${cleanNorm}%` } });
+        if (cleanRaw !== rawDist) {
+          orConds.push({ [Op.and]: [{ normalizedAddress: null }, { address: { [Op.like]: `%${cleanRaw}%` } }] });
+        }
       }
-      andConditions.push({ [Op.or]: orConditions });
+      andConditions.push({ [Op.or]: orConds });
     }
   }
 
-  // 3. Tìm kiếm theo từ khóa địa chỉ (hỗ trợ có dấu, không dấu, chữ hoa, chữ thường)
-  if (search && typeof search === 'string' && search.trim()) {
+  // 3. Tìm kiếm từ khóa địa chỉ (không phân biệt dấu, hoa/thường)
+  // Bỏ qua nếu < 2 ký tự (tránh full table scan với wildcard ngắn)
+  if (search && typeof search === 'string' && search.trim().length >= 2) {
     const rawSearch = search.trim();
     const normSearch = normalizeText(rawSearch);
-    const cleanRaw = rawSearch.replace(/^(Quận|Huyện|Thị xã|Thành phố|Tỉnh|TP\.|P\.|Phường|Đường|Phố)\s+/i, '').trim();
-    const cleanNorm = normalizeText(cleanRaw);
 
-    const searchOr = [
-      { address: { [Op.like]: `%${rawSearch}%` } },
-      { normalizedAddress: { [Op.like]: `%${normSearch}%` } },
-    ];
-
-    if (cleanRaw && cleanRaw !== rawSearch) {
-      searchOr.push(
-        { address: { [Op.like]: `%${cleanRaw}%` } },
-        { normalizedAddress: { [Op.like]: `%${cleanNorm}%` } }
-      );
-    }
-
-    // Xử lý quận đánh số
+    // Xử lý quận đánh số (q1, quan 1)
     const numMatch = rawSearch.match(/^(?:quận|quan|q\.?|huyện|huyen)\s*(\d{1,2})$/i);
     if (numMatch) {
       const num = parseInt(numMatch[1], 10);
-      searchOr.push(
-        { address: { [Op.like]: `%Quận ${num}%` } },
-        { address: { [Op.like]: `%Q.${num}%` } },
-        { address: { [Op.like]: `%Q${num}%` } },
-        { normalizedAddress: { [Op.like]: `%quan ${num}%` } },
-        { normalizedAddress: { [Op.like]: `%q.${num}%` } },
-        { normalizedAddress: { [Op.like]: `%q${num}%` } }
-      );
-    }
+      andConditions.push({
+        [Op.or]: [
+          { normalizedAddress: { [Op.like]: `%quan ${num}%` } },
+          { normalizedAddress: { [Op.like]: `%quan 0${num}%` } },
+          { [Op.and]: [{ normalizedAddress: null }, { address: { [Op.like]: `%Quận ${num}%` } }] },
+          { [Op.and]: [{ normalizedAddress: null }, { address: { [Op.like]: `%Q.${num}%` } }] },
+        ]
+      });
+    } else {
+      // Tìm chính trong normalizedAddress + fallback address gốc khi NULL
+      const searchOr = [
+        { normalizedAddress: { [Op.like]: `%${normSearch}%` } },
+        {
+          [Op.and]: [
+            { normalizedAddress: null },
+            { address: { [Op.like]: `%${rawSearch}%` } }
+          ]
+        }
+      ];
 
-    // Tìm thêm trong exactAddress cho Staff/Admin
-    if (isStaff) {
-      searchOr.push(
-        { exactAddress: { [Op.like]: `%${rawSearch}%` } },
-        { normalizedExactAddress: { [Op.like]: `%${normSearch}%` } }
-      );
-      if (cleanRaw && cleanRaw !== rawSearch) {
-        searchOr.push(
-          { exactAddress: { [Op.like]: `%${cleanRaw}%` } },
-          { normalizedExactAddress: { [Op.like]: `%${cleanNorm}%` } }
-        );
+      // Staff/admin: tìm thêm trong normalizedExactAddress
+      if (isStaff) {
+        searchOr.push({ normalizedExactAddress: { [Op.like]: `%${normSearch}%` } });
       }
-    }
 
-    andConditions.push({ [Op.or]: searchOr });
+      andConditions.push({ [Op.or]: searchOr });
+    }
   }
 
   return andConditions;
 };
+
 
 // @desc    Get all properties
 // @route   GET /api/properties
@@ -186,13 +176,13 @@ const getProperties = async (req, res) => {
 
     // Mặc định phân trang: 12 BDS / trang cho public, 20 cho staff
     const pageNum  = Math.max(1, parseInt(page, 10)  || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || (isStaff ? 20 : 12)));
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || (isStaff ? 20 : 12)));
     const offset   = (pageNum - 1) * limitNum;
 
     // --- Cache key ---
-    // Staff/Admin bỏ qua cache (dữ liệu thay đổi liên tục, cần real-time)
+    // Dùng chuỗi ngắn gọn thay vì JSON.stringify toàn bộ object (tránh key dài)
     const cacheKey = !isStaff
-      ? `props:${JSON.stringify({ status, type, minPrice, maxPrice, featured, search, province, district, pageNum, limitNum })}`
+      ? `props|${[status||'',type||'',minPrice||'',maxPrice||'',featured||'',search||'',province||'',district||'',pageNum,limitNum].join('|')}`
       : null;
 
     if (cacheKey) {
@@ -220,7 +210,7 @@ const getProperties = async (req, res) => {
       if (maxPrice) where.price[Op.lte] = Number(maxPrice);
     }
 
-    // Áp dụng bộ lọc địa chỉ: Tỉnh/Thành + Quận/Huyện + Từ khóa ô tìm kiếm (chỉ tìm trong address)
+    // Áp dụng bộ lọc địa chỉ (tối ưu: tìm chủ yếu trong normalizedAddress)
     const addressConditions = buildAddressConditions({ search, province, district, isStaff });
     if (addressConditions.length === 1) {
       Object.assign(where, addressConditions[0]);
@@ -228,17 +218,26 @@ const getProperties = async (req, res) => {
       where[Op.and] = addressConditions;
     }
 
-    const { count, rows } = await Property.findAndCountAll({
-      where,
-      attributes: { exclude: isAdminOrManager ? [] : ['exactAddress', 'zaloGroupUrl', 'commission'] },
-      include: [
-        { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone'] }
-      ],
-      order: [['isFeatured', 'DESC'], ['createdAt', 'DESC']],
-      limit:    limitNum,
-      offset,
-      distinct: true,
-    });
+    // Tách COUNT và SELECT để tối ưu:
+    // - COUNT dùng query nhẹ (không JOIN, không load columns lớn)
+    // - SELECT mới JOIN User, chỉ lấy đúng trang hiện tại
+    const [count, rows] = await Promise.all([
+      Property.count({ where }),
+      Property.findAll({
+        where,
+        attributes: {
+          exclude: isAdminOrManager
+            ? ['normalizedAddress', 'normalizedExactAddress']       // staff: ẩn internal columns
+            : ['exactAddress', 'zaloGroupUrl', 'commission', 'normalizedAddress', 'normalizedExactAddress']
+        },
+        include: [
+          { model: User, as: 'agent', attributes: ['id', 'name', 'email', 'phone'] }
+        ],
+        order: [['isFeatured', 'DESC'], ['createdAt', 'DESC']],
+        limit:  limitNum,
+        offset,
+      }),
+    ]);
 
     const safeProperties = rows.map(p => filterSensitivePropertyFields(p.toJSON(), req.user));
 
@@ -251,7 +250,8 @@ const getProperties = async (req, res) => {
     };
 
     if (cacheKey) {
-      cache.set(cacheKey, result, 5 * 60 * 1000); // Cache 5 phút
+      // Cache ngắn hơn (2 phút) để dữ liệu fresh hơn, tránh stale khi có thêm BĐS mới
+      cache.set(cacheKey, result, 2 * 60 * 1000);
       res.set('X-Cache', 'MISS');
     }
 
