@@ -1,5 +1,12 @@
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/db');
+const normalizeText = (str) => {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .trim();
+};
 
 const Property = sequelize.define('Property', {
   id: {
@@ -15,8 +22,16 @@ const Property = sequelize.define('Property', {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  normalizedAddress: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  },
   exactAddress: {
     type: DataTypes.STRING,
+    allowNull: true,
+  },
+  normalizedExactAddress: {
+    type: DataTypes.STRING(500),
     allowNull: true,
   },
   price: {
@@ -212,6 +227,24 @@ const Property = sequelize.define('Property', {
     { fields: ['isPublished', 'isFeatured', 'price'] },
     { fields: ['isPublished', 'status'] },
   ],
+  hooks: {
+    beforeValidate: (property) => {
+      if (property.address) {
+        property.normalizedAddress = normalizeText(property.address);
+      }
+      if (property.exactAddress) {
+        property.normalizedExactAddress = normalizeText(property.exactAddress);
+      }
+    },
+    beforeSave: (property) => {
+      if (property.address) {
+        property.normalizedAddress = normalizeText(property.address);
+      }
+      if (property.exactAddress) {
+        property.normalizedExactAddress = normalizeText(property.exactAddress);
+      }
+    },
+  },
 });
 
 module.exports = Property;

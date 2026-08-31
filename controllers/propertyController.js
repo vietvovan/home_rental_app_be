@@ -22,58 +22,93 @@ const filterSensitivePropertyFields = (data, user) => {
   return data;
 };
 
+const normalizeText = (str) => {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .trim();
+};
+
 /**
  * Xây dựng điều kiện lọc địa chỉ chính xác và thông minh
  * - province: Lọc theo Tỉnh/Thành (kèm từ đồng nghĩa HCM, HN, ĐN, HP...)
  * - district: Lọc theo Quận/Huyện (kèm các biến thể Quận 1, Q1, Q.1...)
- * - search: Từ khóa địa chỉ do người dùng nhập (chỉ tìm trong trường address / exactAddress)
+ * - search: Từ khóa địa chỉ do người dùng nhập (hỗ trợ có dấu / không dấu / hoa / thường)
  */
 const buildAddressConditions = ({ search, province, district, isStaff }) => {
   const andConditions = [];
 
-  // 1. Lọc theo Tỉnh / Thành phố
+  // 1. Lọc theo Tỉnh / Thành phố (hỗ trợ cả có dấu và không dấu)
   if (province && typeof province === 'string' && province.trim() && province !== 'Tất cả tỉnh/thành') {
     const prov = province.trim();
-    if (/hồ chí minh|tp\.?hcm|hcm|sài gòn/i.test(prov)) {
+    const normProv = normalizeText(prov);
+    if (/hồ chí minh|tp\.?hcm|hcm|sài gòn|sai gon/i.test(normProv)) {
       andConditions.push({
         [Op.or]: [
           { address: { [Op.like]: '%Hồ Chí Minh%' } },
           { address: { [Op.like]: '%TP.HCM%' } },
           { address: { [Op.like]: '%TP. Hồ Chí Minh%' } },
-          { address: { [Op.like]: '%HCM%' } },
-          { address: { [Op.like]: '%Sài Gòn%' } },
+          { normalizedAddress: { [Op.like]: '%ho chi minh%' } },
+          { normalizedAddress: { [Op.like]: '%tp.hcm%' } },
+          { normalizedAddress: { [Op.like]: '%hcm%' } },
+          { normalizedAddress: { [Op.like]: '%sai gon%' } },
         ]
       });
-    } else if (/hà nội|hn/i.test(prov)) {
+    } else if (/hà nội|hn|ha noi/i.test(normProv)) {
       andConditions.push({
         [Op.or]: [
           { address: { [Op.like]: '%Hà Nội%' } },
           { address: { [Op.like]: '%HN%' } },
+          { normalizedAddress: { [Op.like]: '%ha noi%' } },
+          { normalizedAddress: { [Op.like]: '%hn%' } },
         ]
       });
-    } else if (/đà nẵng|dn/i.test(prov)) {
+    } else if (/đà nẵng|dn|da nang/i.test(normProv)) {
       andConditions.push({
         [Op.or]: [
           { address: { [Op.like]: '%Đà Nẵng%' } },
           { address: { [Op.like]: '%DN%' } },
+          { normalizedAddress: { [Op.like]: '%da nang%' } },
+          { normalizedAddress: { [Op.like]: '%dn%' } },
         ]
       });
-    } else if (/hải phòng|hp/i.test(prov)) {
+    } else if (/hải phòng|hp|hai phong/i.test(normProv)) {
       andConditions.push({
         [Op.or]: [
           { address: { [Op.like]: '%Hải Phòng%' } },
           { address: { [Op.like]: '%HP%' } },
+          { normalizedAddress: { [Op.like]: '%hai phong%' } },
+          { normalizedAddress: { [Op.like]: '%hp%' } },
+        ]
+      });
+    } else if (/hưng yên|hy|hung yen/i.test(normProv)) {
+      andConditions.push({
+        [Op.or]: [
+          { address: { [Op.like]: '%Hưng Yên%' } },
+          { address: { [Op.like]: '%HY%' } },
+          { normalizedAddress: { [Op.like]: '%hung yen%' } },
+          { normalizedAddress: { [Op.like]: '%hy%' } },
         ]
       });
     } else {
-      andConditions.push({ address: { [Op.like]: `%${prov}%` } });
+      andConditions.push({
+        [Op.or]: [
+          { address: { [Op.like]: `%${prov}%` } },
+          { normalizedAddress: { [Op.like]: `%${normProv}%` } },
+        ]
+      });
     }
   }
 
-  // 2. Lọc theo Quận / Huyện
+  // 2. Lọc theo Quận / Huyện (hỗ trợ cả có dấu và không dấu)
   if (district && typeof district === 'string' && district.trim() && district !== 'Tất cả quận/huyện') {
     const rawDist = district.trim();
+    const normDist = normalizeText(rawDist);
     const cleanDist = rawDist.replace(/^(Quận|Huyện|Thị xã|Thành phố|TP\.)\s+/i, '').trim();
+    const cleanNormDist = normalizeText(cleanDist);
     const numMatch = rawDist.match(/^(?:quận|quan|q\.?|huyện|huyen)\s*(\d{1,2})$/i);
 
     if (numMatch) {
@@ -83,61 +118,101 @@ const buildAddressConditions = ({ search, province, district, isStaff }) => {
           { address: { [Op.like]: `%Quận ${num}%` } },
           { address: { [Op.like]: `%Q.${num}%` } },
           { address: { [Op.like]: `%Q${num}%` } },
-          { address: { [Op.like]: `%Quan ${num}%` } },
-          { address: { [Op.like]: `%Quận 0${num}%` } },
+          { normalizedAddress: { [Op.like]: `%quan ${num}%` } },
+          { normalizedAddress: { [Op.like]: `%q.${num}%` } },
+          { normalizedAddress: { [Op.like]: `%q${num}%` } },
+          { normalizedAddress: { [Op.like]: `%quan 0${num}%` } },
         ]
       });
-    } else if (cleanDist.length > 0) {
+    } else {
       andConditions.push({
         [Op.or]: [
           { address: { [Op.like]: `%${rawDist}%` } },
           { address: { [Op.like]: `%${cleanDist}%` } },
+          { normalizedAddress: { [Op.like]: `%${normDist}%` } },
+          { normalizedAddress: { [Op.like]: `%${cleanNormDist}%` } },
         ]
       });
     }
   }
 
-  // 3. Tìm kiếm theo từ khóa địa chỉ (chỉ tìm trong trường address / exactAddress)
+  // 3. Tìm kiếm theo từ khóa địa chỉ (hỗ trợ có dấu, không dấu, chữ hoa, chữ thường)
   if (search && typeof search === 'string' && search.trim()) {
     const rawSearch = search.trim();
-    const cleanSearch = rawSearch.replace(/^(Quận|Huyện|Thị xã|Thành phố|Tỉnh|TP\.|P\.|Phường|Đường|Phố)\s+/i, '').trim();
-    const numMatch = rawSearch.match(/^(?:quận|quan|q\.?|huyện|huyen)\s*(\d{1,2})$/i);
+    const normSearch = normalizeText(rawSearch);
+    const cleanRaw = rawSearch.replace(/^(Quận|Huyện|Thị xã|Thành phố|Tỉnh|TP\.|P\.|Phường|Đường|Phố)\s+/i, '').trim();
+    const cleanNorm = normalizeText(cleanRaw);
 
-    const searchOr = [];
-    searchOr.push({ address: { [Op.like]: `%${rawSearch}%` } });
-    if (cleanSearch && cleanSearch !== rawSearch) {
-      searchOr.push({ address: { [Op.like]: `%${cleanSearch}%` } });
+    const searchOr = [
+      { address: { [Op.like]: `%${rawSearch}%` } },
+      { normalizedAddress: { [Op.like]: `%${normSearch}%` } },
+    ];
+
+    if (cleanRaw && cleanRaw !== rawSearch) {
+      searchOr.push({ address: { [Op.like]: `%${cleanRaw}%` } });
+    }
+    if (cleanNorm && cleanNorm !== normSearch) {
+      searchOr.push({ normalizedAddress: { [Op.like]: `%${cleanNorm}%` } });
     }
 
+    const numMatch = rawSearch.match(/^(?:quận|quan|q\.?|huyện|huyen)\s*(\d{1,2})$/i);
     if (numMatch) {
       const num = parseInt(numMatch[1], 10);
       searchOr.push(
         { address: { [Op.like]: `%Quận ${num}%` } },
         { address: { [Op.like]: `%Q.${num}%` } },
         { address: { [Op.like]: `%Q${num}%` } },
-        { address: { [Op.like]: `%Quan ${num}%` } }
+        { normalizedAddress: { [Op.like]: `%quan ${num}%` } },
+        { normalizedAddress: { [Op.like]: `%q.${num}%` } },
+        { normalizedAddress: { [Op.like]: `%q${num}%` } }
       );
     }
 
     // Từ đồng nghĩa tỉnh/thành nếu người dùng gõ tắt
-    if (/^(?:hcm|tphcm|tp\.hcm|sài gòn|sai gon)$/i.test(rawSearch)) {
+    if (/^(?:hcm|tphcm|tp\.hcm|sài gòn|sai gon)$/i.test(normSearch)) {
       searchOr.push(
         { address: { [Op.like]: '%Hồ Chí Minh%' } },
         { address: { [Op.like]: '%TP.HCM%' } },
-        { address: { [Op.like]: '%HCM%' } }
+        { address: { [Op.like]: '%HCM%' } },
+        { normalizedAddress: { [Op.like]: '%ho chi minh%' } },
+        { normalizedAddress: { [Op.like]: '%tp.hcm%' } },
+        { normalizedAddress: { [Op.like]: '%hcm%' } },
+        { normalizedAddress: { [Op.like]: '%sai gon%' } }
       );
-    } else if (/^(?:hn|hà nội|ha noi)$/i.test(rawSearch)) {
+    } else if (/^(?:hn|hà nội|ha noi)$/i.test(normSearch)) {
       searchOr.push(
         { address: { [Op.like]: '%Hà Nội%' } },
-        { address: { [Op.like]: '%HN%' } }
+        { address: { [Op.like]: '%HN%' } },
+        { normalizedAddress: { [Op.like]: '%ha noi%' } },
+        { normalizedAddress: { [Op.like]: '%hn%' } }
+      );
+    } else if (/^(?:dn|đà nẵng|da nang)$/i.test(normSearch)) {
+      searchOr.push(
+        { address: { [Op.like]: '%Đà Nẵng%' } },
+        { address: { [Op.like]: '%DN%' } },
+        { normalizedAddress: { [Op.like]: '%da nang%' } },
+        { normalizedAddress: { [Op.like]: '%dn%' } }
+      );
+    } else if (/^(?:hp|hải phòng|hai phong)$/i.test(normSearch)) {
+      searchOr.push(
+        { address: { [Op.like]: '%Hải Phòng%' } },
+        { address: { [Op.like]: '%HP%' } },
+        { normalizedAddress: { [Op.like]: '%hai phong%' } },
+        { normalizedAddress: { [Op.like]: '%hp%' } }
       );
     }
 
-    // Nếu là nhân viên / admin thì cho phép tìm thêm trong exactAddress
+    // Nếu là nhân viên / admin thì cho phép tìm thêm trong exactAddress & normalizedExactAddress
     if (isStaff) {
-      searchOr.push({ exactAddress: { [Op.like]: `%${rawSearch}%` } });
-      if (cleanSearch && cleanSearch !== rawSearch) {
-        searchOr.push({ exactAddress: { [Op.like]: `%${cleanSearch}%` } });
+      searchOr.push(
+        { exactAddress: { [Op.like]: `%${rawSearch}%` } },
+        { normalizedExactAddress: { [Op.like]: `%${normSearch}%` } }
+      );
+      if (cleanRaw && cleanRaw !== rawSearch) {
+        searchOr.push({ exactAddress: { [Op.like]: `%${cleanRaw}%` } });
+      }
+      if (cleanNorm && cleanNorm !== normSearch) {
+        searchOr.push({ normalizedExactAddress: { [Op.like]: `%${cleanNorm}%` } });
       }
     }
 
@@ -377,8 +452,13 @@ const sanitizePropertyData = (body) => {
     const fl = parseInt(String(data.floors).replace(/\D/g, ''), 10);
     data.floors = isNaN(fl) || fl === 0 ? null : fl;
   }
+  if (data.address !== undefined) {
+    data.address = data.address ? String(data.address).trim() : '';
+    data.normalizedAddress = normalizeText(data.address);
+  }
   if (data.exactAddress !== undefined) {
     data.exactAddress = data.exactAddress ? String(data.exactAddress).trim() : null;
+    data.normalizedExactAddress = data.exactAddress ? normalizeText(data.exactAddress) : null;
   }
   if (data.zaloGroupUrl !== undefined) {
     data.zaloGroupUrl = data.zaloGroupUrl ? String(data.zaloGroupUrl).trim() : null;

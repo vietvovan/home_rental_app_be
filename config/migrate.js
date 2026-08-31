@@ -58,6 +58,8 @@ async function autoMigrate() {
         { name: 'businessTypes', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`businessTypes\` JSON NULL` },
         { name: 'images', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`images\` JSON NULL` },
         { name: 'exactAddress', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`exactAddress\` VARCHAR(500) NULL` },
+        { name: 'normalizedAddress', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`normalizedAddress\` VARCHAR(500) NULL` },
+        { name: 'normalizedExactAddress', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`normalizedExactAddress\` VARCHAR(500) NULL` },
         { name: 'zaloGroupUrl', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`zaloGroupUrl\` VARCHAR(500) NULL` },
         { name: 'isFeatured', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`isFeatured\` TINYINT(1) DEFAULT 0` },
         { name: 'serviceFees', sql: `ALTER TABLE \`${propTable}\` ADD COLUMN \`serviceFees\` JSON NULL` },
@@ -73,6 +75,31 @@ async function autoMigrate() {
             console.warn(`⚠️ [AutoMigrate] Thêm cột ${item.name}:`, e.message);
           }
         }
+      }
+
+      // Tự động chuẩn hóa (backfill) normalizedAddress cho các bản ghi BĐS hiện có
+      try {
+        const normalizeText = (str) => {
+          if (!str) return '';
+          return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').trim();
+        };
+
+        const [propsToBackfill] = await sequelize.query(
+          `SELECT id, address, exactAddress FROM \`${propTable}\` WHERE normalizedAddress IS NULL OR normalizedAddress = ''`
+        );
+        if (propsToBackfill.length > 0) {
+          for (const row of propsToBackfill) {
+            const normAddr = normalizeText(row.address);
+            const normExact = normalizeText(row.exactAddress);
+            await sequelize.query(
+              `UPDATE \`${propTable}\` SET normalizedAddress = :normAddr, normalizedExactAddress = :normExact WHERE id = :id`,
+              { replacements: { normAddr, normExact, id: row.id } }
+            );
+          }
+          console.log(`✅ [AutoMigrate] Đã đồng bộ trường normalizedAddress cho ${propsToBackfill.length} bất động sản.`);
+        }
+      } catch (err) {
+        console.warn(`⚠️ [AutoMigrate] Backfill normalizedAddress:`, err.message);
       }
 
       // Chuyển status và type từ ENUM sang VARCHAR để không bị lỗi truncate
