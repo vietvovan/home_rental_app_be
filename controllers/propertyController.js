@@ -22,6 +22,131 @@ const filterSensitivePropertyFields = (data, user) => {
   return data;
 };
 
+/**
+ * Xây dựng điều kiện lọc địa chỉ chính xác và thông minh
+ * - province: Lọc theo Tỉnh/Thành (kèm từ đồng nghĩa HCM, HN, ĐN, HP...)
+ * - district: Lọc theo Quận/Huyện (kèm các biến thể Quận 1, Q1, Q.1...)
+ * - search: Từ khóa địa chỉ do người dùng nhập (chỉ tìm trong trường address / exactAddress)
+ */
+const buildAddressConditions = ({ search, province, district, isStaff }) => {
+  const andConditions = [];
+
+  // 1. Lọc theo Tỉnh / Thành phố
+  if (province && typeof province === 'string' && province.trim() && province !== 'Tất cả tỉnh/thành') {
+    const prov = province.trim();
+    if (/hồ chí minh|tp\.?hcm|hcm|sài gòn/i.test(prov)) {
+      andConditions.push({
+        [Op.or]: [
+          { address: { [Op.like]: '%Hồ Chí Minh%' } },
+          { address: { [Op.like]: '%TP.HCM%' } },
+          { address: { [Op.like]: '%TP. Hồ Chí Minh%' } },
+          { address: { [Op.like]: '%HCM%' } },
+          { address: { [Op.like]: '%Sài Gòn%' } },
+        ]
+      });
+    } else if (/hà nội|hn/i.test(prov)) {
+      andConditions.push({
+        [Op.or]: [
+          { address: { [Op.like]: '%Hà Nội%' } },
+          { address: { [Op.like]: '%HN%' } },
+        ]
+      });
+    } else if (/đà nẵng|dn/i.test(prov)) {
+      andConditions.push({
+        [Op.or]: [
+          { address: { [Op.like]: '%Đà Nẵng%' } },
+          { address: { [Op.like]: '%DN%' } },
+        ]
+      });
+    } else if (/hải phòng|hp/i.test(prov)) {
+      andConditions.push({
+        [Op.or]: [
+          { address: { [Op.like]: '%Hải Phòng%' } },
+          { address: { [Op.like]: '%HP%' } },
+        ]
+      });
+    } else {
+      andConditions.push({ address: { [Op.like]: `%${prov}%` } });
+    }
+  }
+
+  // 2. Lọc theo Quận / Huyện
+  if (district && typeof district === 'string' && district.trim() && district !== 'Tất cả quận/huyện') {
+    const rawDist = district.trim();
+    const cleanDist = rawDist.replace(/^(Quận|Huyện|Thị xã|Thành phố|TP\.)\s+/i, '').trim();
+    const numMatch = rawDist.match(/^(?:quận|quan|q\.?|huyện|huyen)\s*(\d{1,2})$/i);
+
+    if (numMatch) {
+      const num = parseInt(numMatch[1], 10);
+      andConditions.push({
+        [Op.or]: [
+          { address: { [Op.like]: `%Quận ${num}%` } },
+          { address: { [Op.like]: `%Q.${num}%` } },
+          { address: { [Op.like]: `%Q${num}%` } },
+          { address: { [Op.like]: `%Quan ${num}%` } },
+          { address: { [Op.like]: `%Quận 0${num}%` } },
+        ]
+      });
+    } else if (cleanDist.length > 0) {
+      andConditions.push({
+        [Op.or]: [
+          { address: { [Op.like]: `%${rawDist}%` } },
+          { address: { [Op.like]: `%${cleanDist}%` } },
+        ]
+      });
+    }
+  }
+
+  // 3. Tìm kiếm theo từ khóa địa chỉ (chỉ tìm trong trường address / exactAddress)
+  if (search && typeof search === 'string' && search.trim()) {
+    const rawSearch = search.trim();
+    const cleanSearch = rawSearch.replace(/^(Quận|Huyện|Thị xã|Thành phố|Tỉnh|TP\.|P\.|Phường|Đường|Phố)\s+/i, '').trim();
+    const numMatch = rawSearch.match(/^(?:quận|quan|q\.?|huyện|huyen)\s*(\d{1,2})$/i);
+
+    const searchOr = [];
+    searchOr.push({ address: { [Op.like]: `%${rawSearch}%` } });
+    if (cleanSearch && cleanSearch !== rawSearch) {
+      searchOr.push({ address: { [Op.like]: `%${cleanSearch}%` } });
+    }
+
+    if (numMatch) {
+      const num = parseInt(numMatch[1], 10);
+      searchOr.push(
+        { address: { [Op.like]: `%Quận ${num}%` } },
+        { address: { [Op.like]: `%Q.${num}%` } },
+        { address: { [Op.like]: `%Q${num}%` } },
+        { address: { [Op.like]: `%Quan ${num}%` } }
+      );
+    }
+
+    // Từ đồng nghĩa tỉnh/thành nếu người dùng gõ tắt
+    if (/^(?:hcm|tphcm|tp\.hcm|sài gòn|sai gon)$/i.test(rawSearch)) {
+      searchOr.push(
+        { address: { [Op.like]: '%Hồ Chí Minh%' } },
+        { address: { [Op.like]: '%TP.HCM%' } },
+        { address: { [Op.like]: '%HCM%' } }
+      );
+    } else if (/^(?:hn|hà nội|ha noi)$/i.test(rawSearch)) {
+      searchOr.push(
+        { address: { [Op.like]: '%Hà Nội%' } },
+        { address: { [Op.like]: '%HN%' } }
+      );
+    }
+
+    // Nếu là nhân viên / admin thì cho phép tìm thêm trong exactAddress
+    if (isStaff) {
+      searchOr.push({ exactAddress: { [Op.like]: `%${rawSearch}%` } });
+      if (cleanSearch && cleanSearch !== rawSearch) {
+        searchOr.push({ exactAddress: { [Op.like]: `%${cleanSearch}%` } });
+      }
+    }
+
+    andConditions.push({ [Op.or]: searchOr });
+  }
+
+  return andConditions;
+};
+
 // @desc    Get all properties
 // @route   GET /api/properties
 // @access  Public
@@ -29,7 +154,7 @@ const getProperties = async (req, res) => {
   try {
     const {
       status, type, minPrice, maxPrice, featured,
-      isPublished, search, page, limit
+      isPublished, search, province, district, page, limit
     } = req.query;
 
     const userRole = (req.user?.role || '').toLowerCase();
@@ -44,7 +169,7 @@ const getProperties = async (req, res) => {
     // --- Cache key ---
     // Staff/Admin bỏ qua cache (dữ liệu thay đổi liên tục, cần real-time)
     const cacheKey = !isStaff
-      ? `props:${JSON.stringify({ status, type, minPrice, maxPrice, featured, search, pageNum, limitNum })}`
+      ? `props:${JSON.stringify({ status, type, minPrice, maxPrice, featured, search, province, district, pageNum, limitNum })}`
       : null;
 
     if (cacheKey) {
@@ -72,12 +197,12 @@ const getProperties = async (req, res) => {
       if (maxPrice) where.price[Op.lte] = Number(maxPrice);
     }
 
-    if (search && search.trim()) {
-      const q = `%${search.trim()}%`;
-      where[Op.or] = [
-        { title:   { [Op.like]: q } },
-        { address: { [Op.like]: q } },
-      ];
+    // Áp dụng bộ lọc địa chỉ: Tỉnh/Thành + Quận/Huyện + Từ khóa ô tìm kiếm (chỉ tìm trong address)
+    const addressConditions = buildAddressConditions({ search, province, district, isStaff });
+    if (addressConditions.length === 1) {
+      Object.assign(where, addressConditions[0]);
+    } else if (addressConditions.length > 1) {
+      where[Op.and] = addressConditions;
     }
 
     const { count, rows } = await Property.findAndCountAll({
