@@ -167,7 +167,8 @@ const getProperties = async (req, res) => {
   try {
     const {
       status, type, minPrice, maxPrice, featured,
-      isPublished, search, province, district, page, limit
+      isPublished, search, province, district, page, limit,
+      agentId
     } = req.query;
 
     const userRole = (req.user?.role || '').toLowerCase();
@@ -182,7 +183,7 @@ const getProperties = async (req, res) => {
     // --- Cache key ---
     // Dùng chuỗi ngắn gọn thay vì JSON.stringify toàn bộ object (tránh key dài)
     const cacheKey = !isStaff
-      ? `props|${[status||'',type||'',minPrice||'',maxPrice||'',featured||'',search||'',province||'',district||'',pageNum,limitNum].join('|')}`
+      ? `props|${[status||'',type||'',minPrice||'',maxPrice||'',featured||'',search||'',province||'',district||'',agentId||'',pageNum,limitNum].join('|')}`
       : null;
 
     if (cacheKey) {
@@ -197,6 +198,7 @@ const getProperties = async (req, res) => {
     if (status) where.status = status;
     if (type) where.type = type;
     if (featured === 'true') where.isFeatured = true;
+    if (agentId && agentId !== 'All' && agentId !== '') where.agentId = agentId;
 
     if (!isStaff) {
       where.isPublished = true;
