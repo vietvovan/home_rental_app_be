@@ -198,7 +198,14 @@ const getProperties = async (req, res) => {
     if (status) where.status = status;
     if (type) where.type = type;
     if (featured === 'true') where.isFeatured = true;
-    if (agentId && agentId !== 'All' && agentId !== '') where.agentId = agentId;
+
+    // Phân quyền theo role: Role Manager trong trang quản lý (Admin context) chỉ được xem BĐS do chính mình thêm vào
+    const isAdminContext = req.path === '/admin' || req.query.admin === 'true';
+    if (isAdminContext && userRole === 'manager') {
+      where.agentId = req.user.id;
+    } else if (agentId && agentId !== 'All' && agentId !== '') {
+      where.agentId = agentId;
+    }
 
     if (!isStaff) {
       where.isPublished = true;
@@ -441,8 +448,8 @@ const createProperty = async (req, res) => {
       ...cleanData,
       // Chỉ role Admin mới được phép gán BĐS Nổi Bật
       isFeatured: isAdmin ? Boolean(cleanData.isFeatured) : false,
-      // Tự động gán agentId là người đăng tin nếu không truyền
-      agentId: cleanData.agentId || (req.user ? req.user.id : null),
+      // Manager tạo BĐS luôn gán agentId là chính mình, Admin có thể gán cho người khác
+      agentId: isAdmin ? (cleanData.agentId || (req.user ? req.user.id : null)) : (req.user ? req.user.id : null),
       // Mặc định khi thêm mới BĐS thì bật tính năng đăng tin
       isPublished: cleanData.isPublished !== undefined ? Boolean(cleanData.isPublished) : true,
     };
@@ -466,6 +473,11 @@ const updateProperty = async (req, res) => {
       const cleanData = sanitizePropertyData(req.body);
       const userRole = (req.user?.role || '').toLowerCase();
       const isAdmin = userRole === 'admin';
+
+      // Manager chỉ có thể cập nhật BĐS do chính mình thêm vào
+      if (userRole === 'manager' && property.agentId !== req.user.id) {
+        return res.status(403).json({ message: 'Bạn chỉ có quyền chỉnh sửa bất động sản do chính mình thêm vào.' });
+      }
 
       // Nếu không phải Admin thì không được thay đổi trạng thái BĐS Nổi Bật
       if (!isAdmin && cleanData.isFeatured !== undefined) {
@@ -497,6 +509,12 @@ const togglePublishProperty = async (req, res) => {
     if (!property) {
       return res.status(404).json({ message: 'Không tìm thấy bất động sản' });
     }
+
+    const userRole = (req.user?.role || '').toLowerCase();
+    if (userRole === 'manager' && property.agentId !== req.user.id) {
+      return res.status(403).json({ message: 'Bạn chỉ có quyền thay đổi trạng thái đăng tin bất động sản do chính mình thêm vào.' });
+    }
+
     const newStatus = property.isPublished === false ? true : false;
     await property.update({ isPublished: newStatus });
     // Xóa cache khi toggle publish
@@ -519,6 +537,11 @@ const deleteProperty = async (req, res) => {
     const property = await Property.findByPk(req.params.id);
 
     if (property) {
+      const userRole = (req.user?.role || '').toLowerCase();
+      if (userRole === 'manager' && property.agentId !== req.user.id) {
+        return res.status(403).json({ message: 'Bạn chỉ có quyền xóa bất động sản do chính mình thêm vào.' });
+      }
+
       // Xóa ảnh trên Cloudinary trước khi xóa record
       await deleteFromCloudinary(property.image);
       await property.destroy();

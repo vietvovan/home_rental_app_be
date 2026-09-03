@@ -19,6 +19,9 @@ const { protect, optionalProtect, adminOrManager } = require('../middlewares/aut
 router.get('/', optionalProtect, getProperties);
 router.get('/featured', optionalProtect, getFeaturedProperties);
 router.get('/download-image', downloadImageProxy);
+
+// Admin routes
+router.get('/admin', protect, adminOrManager, getProperties);
 router.get('/:id', optionalProtect, getPropertyById);
 
 // Admin routes
