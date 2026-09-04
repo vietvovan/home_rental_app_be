@@ -63,7 +63,7 @@ const uploadBlog = multer({
 // Hàm xóa ảnh khỏi Cloudinary theo public_id
 const deleteFromCloudinary = async (imageUrl) => {
   try {
-    if (!imageUrl || !imageUrl.includes('cloudinary.com')) return;
+    if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.includes('cloudinary.com')) return null;
     // Trích xuất public_id từ URL Cloudinary
     const parts = imageUrl.split('/');
     const filenameWithExt = parts[parts.length - 1];
@@ -72,9 +72,10 @@ const deleteFromCloudinary = async (imageUrl) => {
     const publicId = folderIndex !== -1
       ? `nexthome/${parts[folderIndex + 1]}/${filename}`
       : filename;
-    await cloudinary.uploader.destroy(publicId);
+    return await cloudinary.uploader.destroy(publicId);
   } catch (err) {
     console.error('[Cloudinary] Lỗi xóa ảnh:', err.message);
+    return null;
   }
 };
 

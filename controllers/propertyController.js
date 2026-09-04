@@ -484,8 +484,12 @@ const updateProperty = async (req, res) => {
         delete cleanData.isFeatured;
       }
 
-      // Nếu ảnh bìa được thay thế → xóa ảnh cũ trên Cloudinary
-      if (cleanData.image && cleanData.image !== property.image) {
+      // Chỉ xóa ảnh bìa cũ nếu nó bị xóa hoàn toàn khỏi danh sách ảnh (không còn trong cleanData.images)
+      if (
+        property.image &&
+        cleanData.image !== property.image &&
+        (!cleanData.images || !cleanData.images.includes(property.image))
+      ) {
         await deleteFromCloudinary(property.image);
       }
       const updatedProperty = await property.update(cleanData);
@@ -542,8 +546,18 @@ const deleteProperty = async (req, res) => {
         return res.status(403).json({ message: 'Bạn chỉ có quyền xóa bất động sản do chính mình thêm vào.' });
       }
 
-      // Xóa ảnh trên Cloudinary trước khi xóa record
-      await deleteFromCloudinary(property.image);
+      // Xóa tất cả ảnh của BĐS trên Cloudinary trước khi xóa record khỏi DB
+      const allImagesToDelete = new Set();
+      if (property.image) allImagesToDelete.add(property.image);
+      if (Array.isArray(property.images)) {
+        property.images.forEach((img) => typeof img === 'string' && allImagesToDelete.add(img));
+      } else if (typeof property.images === 'string') {
+        try {
+          const parsed = JSON.parse(property.images);
+          if (Array.isArray(parsed)) parsed.forEach((img) => typeof img === 'string' && allImagesToDelete.add(img));
+        } catch {}
+      }
+      await Promise.allSettled(Array.from(allImagesToDelete).map((img) => deleteFromCloudinary(img)));
       await property.destroy();
       // Xóa cache khi xóa BDS
       cache.delByPrefix('props:');
