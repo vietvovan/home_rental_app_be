@@ -634,6 +634,37 @@ const backfillNormalizedAddress = async (req, res) => {
   }
 };
 
+// @desc    Xóa nhiều ảnh khỏi Cloudinary theo danh sách URL
+// @route   DELETE /api/properties/images
+// @access  Private/Admin|Manager
+const deleteImages = async (req, res) => {
+  try {
+    const { urls } = req.body;
+    if (!Array.isArray(urls) || urls.length === 0) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp danh sách URL ảnh cần xóa' });
+    }
+
+    // Chỉ xử lý URL hợp lệ của Cloudinary (bảo vệ khỏi xóa nhầm URL ngoài)
+    const validUrls = urls.filter(
+      (url) => typeof url === 'string' && url.includes('cloudinary.com')
+    );
+
+    // Xóa song song, không block nếu 1 ảnh lỗi
+    const results = await Promise.allSettled(
+      validUrls.map((url) => deleteFromCloudinary(url))
+    );
+
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    res.json({
+      success: true,
+      deleted: validUrls.length - failed,
+      failed,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getProperties,
   getFeaturedProperties,
@@ -645,4 +676,5 @@ module.exports = {
   deleteProperty,
   downloadImageProxy,
   backfillNormalizedAddress,
+  deleteImages,
 };

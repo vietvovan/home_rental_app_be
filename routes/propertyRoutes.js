@@ -11,6 +11,7 @@ const {
   deleteProperty,
   downloadImageProxy,
   backfillNormalizedAddress,
+  deleteImages,
 } = require('../controllers/propertyController');
 const { uploadProperty } = require('../config/cloudinary');
 const { protect, optionalProtect, adminOrManager } = require('../middlewares/authMiddleware');
@@ -32,5 +33,7 @@ router.post('/admin/backfill-address', protect, adminOrManager, backfillNormaliz
 router.put('/admin/:id', protect, adminOrManager, updateProperty);
 router.patch('/admin/:id/toggle-publish', protect, adminOrManager, togglePublishProperty);
 router.delete('/admin/:id', protect, adminOrManager, deleteProperty);
+// Xóa hàng loạt ảnh khỏi Cloudinary (gọi sau khi user xóa ảnh trong UI)
+router.delete('/images', protect, adminOrManager, deleteImages);
 
 module.exports = router;
