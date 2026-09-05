@@ -207,7 +207,10 @@ const getProperties = async (req, res) => {
       where.agentId = agentId;
     }
 
-    if (!isStaff) {
+    // Ở trang public / nhà cho thuê (không phải admin context), LUÔN LUÔN chỉ hiển thị BĐS có trạng thái hiển thị bật (isPublished = true),
+    // kể cả khi user đang đăng nhập bằng tài khoản Admin hay Manager.
+    // Chỉ trong trang quản trị Admin context (admin=true hoặc route /admin), Admin/Manager mới xem được các căn chưa đăng.
+    if (!isAdminContext) {
       where.isPublished = true;
     } else if (isPublished !== undefined && isPublished !== 'All' && isPublished !== '') {
       where.isPublished = isPublished === 'true';
@@ -455,7 +458,7 @@ const createProperty = async (req, res) => {
     };
     const property = await Property.create(data);
     // Xóa cache khi có BDS mới
-    cache.delByPrefix('props:');
+    cache.delByPrefix('props');
     res.status(201).json(property);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -494,7 +497,7 @@ const updateProperty = async (req, res) => {
       }
       const updatedProperty = await property.update(cleanData);
       // Xóa cache khi cập nhật BDS
-      cache.delByPrefix('props:');
+      cache.delByPrefix('props');
       res.json(updatedProperty);
     } else {
       res.status(404).json({ message: 'Property not found' });
@@ -522,7 +525,7 @@ const togglePublishProperty = async (req, res) => {
     const newStatus = property.isPublished === false ? true : false;
     await property.update({ isPublished: newStatus });
     // Xóa cache khi toggle publish
-    cache.delByPrefix('props:');
+    cache.delByPrefix('props');
     res.json({
       success: true,
       message: newStatus ? 'Đã bật đăng tin BĐS thành công' : 'Đã tắt đăng tin BĐS thành công',
@@ -560,7 +563,7 @@ const deleteProperty = async (req, res) => {
       await Promise.allSettled(Array.from(allImagesToDelete).map((img) => deleteFromCloudinary(img)));
       await property.destroy();
       // Xóa cache khi xóa BDS
-      cache.delByPrefix('props:');
+      cache.delByPrefix('props');
       res.json({ message: 'Property removed' });
     } else {
       res.status(404).json({ message: 'Property not found' });
